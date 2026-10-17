@@ -1,0 +1,32 @@
+{
+  "name": "paper-translate-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "format": "prettier --write src vite.config.ts index.html",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.4",
+    "katex": "^0.16.21",
+    "lucide-react": "^0.468.0",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^9.0.3",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.0",
+    "remark-math": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "prettier": "3.9.10",
+    "typescript": "~5.7.3",
+    "vite": "^6.1.0"
+  }
+}
