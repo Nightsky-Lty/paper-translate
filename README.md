@@ -1,73 +1,137 @@
 # 纸间 · Paper Translate
 
-一个支持本机运行和个人服务器部署的双语论文阅读工具：MinerU 负责解析 PDF，LLM 仅负责翻译，程序保存原文、译文和 PDF 坐标之间的对应关系。
+纸间是一个可在本机或服务器运行的双语论文阅读与翻译工具。它使用 MinerU 解析 PDF，使用 OpenAI 兼容的 LLM 接口翻译文字，并保留段落与原 PDF 的位置关系，方便边读译文边核对原文。
 
-服务器部署说明见 [deploy/README.md](deploy/README.md)，包含 Docker、HTTPS、访问密码和备份。远端模式下，网页会明确标注数据保存在服务器；所有页面、API、PDF 和图片均需访问密码。当前为个人共享工作空间，不提供多用户数据隔离。
+```text
+PDF → MinerU 解析 → 段落、图片与坐标 → LLM 翻译 → 对照阅读 / Markdown 导出
+```
 
-服务器版可选安装 MinerU 4 CPU Basic，上传 PDF 后在服务器完成解析。支持通过 HTTPS 或 SSH 隧道访问，配置方法见部署说明。
+## 功能
 
-## 启动
+- **四种阅读模式**：逐段中英对照、逐节中英对照、纯中文、英文原文；切换模式无需再次调用 LLM。
+- **原 PDF 对照**：点击段落定位并高亮 PDF，点击 PDF 内容框定位对应段落，支持可选的滚动联动。
+- **多种解析来源**：导入 MinerU 桌面端结果、上传结果 ZIP，或配置 MinerU 命令行 / Python 环境、云端 API 自动解析新 PDF。
+- **可配置翻译服务**：支持 OpenAI 兼容的接口地址、模型、API Key 和术语表。
+- **编辑与续传**：逐批保存译文，支持暂停、继续、单段重译和人工编辑；进行中的翻译不会覆盖较新的人工修改。
+- **便携导出**：导出 Markdown、JSON，或包含图片的完整 ZIP 包。
+- **服务器部署**：提供 Docker 配置、访问密码保护，以及 HTTPS / SSH 隧道访问方案。
 
-需要 Python 3.11+、[uv](https://docs.astral.sh/uv/) 和 Node.js 20+。
+## 快速开始
+
+### 环境要求
+
+本地启动脚本使用 Bash，需要：
+
+- Python 3.11 或更高版本。
+- [uv](https://docs.astral.sh/uv/)。
+- Node.js 20 或更高版本及 npm。
+
+MinerU 和翻译服务需按所选方式单独准备。仅导入已有解析结果时，无需安装 MinerU 命令行环境；使用外部翻译服务时，需要自行提供相应凭据。
+
+### 下载并启动
 
 ```bash
+git clone https://github.com/Nightsky-Lty/paper-translate.git
 cd paper-translate
 bash scripts/start.sh
 ```
 
-启动后自动在浏览器打开 **http://127.0.0.1:8765**。macOS 也可双击 `启动纸间.command`，终端窗口中按 Ctrl+C 停止。首次启动需要联网安装依赖。前端依赖和字体均打包在本地，之后阅读已导入论文无需访问外部服务。设置 `PAPER_TRANSLATE_NO_BROWSER=1` 可禁用自动打开浏览器。
+脚本会创建 Python 环境、安装依赖并构建前端，随后自动打开 **http://127.0.0.1:8765**。首次启动需要联网。保持终端窗口打开，按 Ctrl+C 停止应用。
 
-## 使用
+如需禁止自动打开浏览器：
 
-1. 点击 **导入论文 → MinerU 论文库**。默认扫描 `~/MinerU`，可在设置中修改目录。选择一篇已有解析结果，应用会复制原 PDF、JSON 和图片，不改动 MinerU 原文件。
-2. 在 **应用设置 → 翻译服务** 中填写 OpenAI 兼容的 API Base URL、模型名和 API Key。Base URL 包含服务商所需的版本路径（如 `/v1`），不包含 `/chat/completions`。默认地址与模型名仅作为 DeepSeek 配置示例，不附带 Key。也可连接支持该协议的本地服务。
-3. 可先 **保存并测试连接**，会发送一句英文测试请求。测试与翻译均按服务商规则产生调用费用。
-4. 打开论文，点击 **开始翻译**。结果按批立即保存。可暂停、继续；应用重启后不会自动重新发送请求。
-5. 在 **逐段对照 / 纯中文 / 逐节对照 / 英文原文** 中切换。显示格式的切换不会调用 LLM。
-6. 点击译文段落可定位并高亮原 PDF；点击 PDF 内容框可定位译文。可选开启按段落的滚动联动。PDF 下方可翻页、缩放。
-7. 段落下方提供 **定位、编辑、重译**。人工修改带版本保护，不会被正在执行的旧批次覆盖。
-8. 点击 **导出 → Markdown 完整包**，得到 `paper.md`、`paper.json` 和 `assets/` 图片。单独的 Markdown 需要搭配图片目录。
-
-未翻译内容明确标记为“待翻译”；纯中文模式会暂时显示原文作为阅读回退。参考文献、代码和独立公式默认保留原文。图像保持不变，图注参与翻译；有结构化 HTML 的表格翻译文字并保留标签，只有表格图片时展示原图。图像内部的英文不做 OCR 翻译。
-
-## 现有 MinerU 与新 PDF
-
-默认使用 **已有 MinerU 结果** 模式，可导入桌面端导出的解析结果。若要上传 PDF 后自动解析，需要配置 MinerU CLI、Python 环境或云端 API。
-
-- **已有结果目录**：需要 `*_content_list.json`（V1）或 `*content_list_v2.json`（V2）、原 PDF，以及引用到的 `images/`。优先使用 V1，以读取明确的 `page_idx`。V1/V2 的 bbox 从 0–1000 转换为应用统一的 0–1 坐标。
-- **PDF + 结果 ZIP**：在导入窗口选择 ZIP；原 PDF 可放在 ZIP 里，或与 ZIP 一起上传。支持 ZIP 中的一层或多层目录。
-- **本地 CLI**：在设置中启用并填写 `mineru` 可执行文件路径。适配支持 `-p / -o / -b` 的 MinerU 2.x CLI。程序用参数数组启动进程，不执行 shell。模型文件和 CLI 需要自行安装；本项目不会改变桌面版安装。
-- **MinerU 4 CLI**：使用 `<MinerU 环境>/bin/python <项目路径>/scripts/parse_mineru4.py` 作为命令，选择对应的 Basic / Standard / Advanced / Flash。适配器调用完整文档解析 API 并生成 V1 content list，保留图片和原文坐标。服务器 CPU 部署步骤见部署说明；应用内解析始终串行执行，排队时仍可暂停。
-- **MinerU 云端 API**：在设置中启用并填写 Token。导入新 PDF 时，文件会上传到 MinerU 官方 API，程序获取结果后在本地保存。已提交云端的任务可能在本地暂停后继续运行。
-
-不同版本 MinerU 的输出契约可能变化；当前适配器支持已验证的 V1 / V2 内容列表，不假定所有 JSON 都具有相同结构。需要新格式时修改 `server/mineru.py`，无需改动阅读器或翻译协议。
-
-## 数据与翻译协议
-
-```text
-PDF → MinerU → 统一段落模型 → 按章节和段落分批翻译 → GUI / Markdown
+```bash
+PAPER_TRANSLATE_NO_BROWSER=1 bash scripts/start.sh
 ```
 
-每个块保存稳定 ID、类型、原文、译文、章节 ID、`source_locations[]`、翻译状态和编辑版本。`source_locations` 是数组，可承载跨页或跨栏的多个来源矩形；当前导入器忠实保留 MinerU 内容块边界，不自动猜测跨页段落合并。定位精度以解析器提供的段落框为准，不提供逐词对齐。
+希望在远端运行时，请阅读 [服务器部署指南](deploy/README.md)，其中包含基础 Docker 部署和可选的 MinerU CPU 环境。
 
-LLM 请求只包含段落 ID 与文字，以及论文标题、章节上下文和术语表；坐标、PDF 文件和图片不发送给 LLM。公式、代码片段、URL、数字引用和 HTML 标签先替换为受保护占位符。返回结果必须满足完整且唯一的段落 ID、非空译文、正确的占位符数量后才会保存；失败重试最多 3 次，不覆盖已保存结果。这些校验保证结构完整，不能保证翻译语义正确。
+## 使用流程
 
-实际论文、图片、SQLite 数据库和设置保存在 `data/`，已被 `.gitignore` 排除。API Key / MinerU Token 保存在权限为 `0600` 的本机设置文件中（不是加密保险库），不会回传给前端或放入导出包。也可以使用环境变量 `PAPER_TRANSLATE_API_KEY` 为未保存 Key 的环境提供凭据。`PAPER_TRANSLATE_DATA` 可指定其他数据目录。
+### 1. 选择 PDF 解析方式
 
-本机启动脚本默认仅监听 `127.0.0.1`，并限制 Host 和跨站 Origin。服务器模式通过 `PAPER_TRANSLATE_MODE=server` 显式启用，必须配置访问密码哈希和公开地址；公网地址必须使用 HTTPS。Docker 数据保存在持久化卷中，访问密码与 LLM API Key 是两组不同的凭据。
+在应用设置中选择解析方式，再导入论文：
 
-文档文件路径以相对于数据目录的形式保存，完整迁移数据目录后可继续使用；较早版本的绝对文档路径也会在迁移后自动重定位。迁移需先停止应用以保证 SQLite、PDF 和图片的一致性。
+| 方式 | 需要准备 | 导入方法 |
+| --- | --- | --- |
+| 已有 MinerU 结果 | 原 PDF、content list JSON 和引用的图片 | 本机结果目录，或结果 ZIP |
+| MinerU 2.x CLI | 支持 `-p / -o / -b` 的可执行命令及所需模型 | 上传 PDF 后自动解析 |
+| MinerU 4 Python 环境 | MinerU 4、适配脚本及对应的模型 / 运行环境 | 上传 PDF 后自动解析 |
+| MinerU 云端 API | MinerU API Token | 上传 PDF，提交云端解析并获取结果 |
 
-## 开发与测试
+默认使用“已有 MinerU 结果”模式。“MinerU 论文库”默认扫描 `~/MinerU`，可在设置中修改。已有结果需要包含 `*_content_list.json`（V1）或 `*content_list_v2.json`（V2）、原 PDF，以及引用的 `images/`。ZIP 支持嵌套目录；原 PDF 可放在包内，也可单独配对上传。
 
-后端开发：
+桌面端对接采用结果文件导入，应用不会控制桌面端开始解析。自动解析通过命令行适配器或云端 API 完成。
+
+使用 MinerU 4 时，将解析命令设为以下形式，并按安装位置替换路径：
+
+```text
+/path/to/mineru-env/bin/python /path/to/paper-translate/scripts/parse_mineru4.py
+```
+
+选择与模型和硬件匹配的 Basic / Standard / Advanced / Flash。适配器调用完整文档解析 API，保存图片和中间 JSON，再生成项目使用的 V1 content list。解析任务按单篇串行执行，排队时也可暂停。Docker CPU Basic 环境的安装步骤见部署指南。
+
+### 2. 配置翻译服务
+
+打开“应用设置 → 翻译服务”，填写：
+
+- **API Base URL**：包含服务商要求的版本路径，如 `/v1`，不包含 `/chat/completions`。
+- **模型名**：填写所选服务支持的模型标识。
+- **API Key**：填写服务凭据；也可连接支持同一协议的本地服务。
+- **术语表**：可选，用于约定专业词汇的译法。
+
+默认接口地址与模型名是配置示例，不附带 API Key。点击“保存并测试连接”会发送一句测试请求，测试与后续翻译按服务商规则计费。
+
+### 3. 翻译与阅读
+
+导入论文后点击“开始翻译”。结果逐批保存，可暂停并继续未完成部分；应用重启后任务会暂停，不会自动重新发送翻译请求。
+
+在阅读器中切换显示模式，点击段落或 PDF 内容框相互定位。段落提供“定位、编辑、重译”操作。未翻译内容标记为“待翻译”，纯中文模式下会暂时显示原文作为回退。
+
+### 4. 导出
+
+通过导出菜单选择阅读格式及文件类型：
+
+- **Markdown**：适合在 Markdown 编辑器中阅读；图片需搭配资源目录使用。
+- **JSON**：保存段落、译文与位置等结构化数据。
+- **Markdown 完整包**：包含 `paper.md`、`paper.json` 和 `assets/` 图片，便于归档或迁移。
+
+## 使用限制
+
+- 定位精度取决于 MinerU 提供的内容块坐标，当前提供段落级对照，不提供逐词对齐，也不自动合并推测的跨页段落。
+- 参考文献、代码和独立公式默认保留原文。图注可以翻译，图像内部文字不做 OCR 翻译或重绘。
+- 有结构化 HTML 的表格会翻译文字并保留标签；只有图片的表格展示原图。
+- 翻译前会保护公式、代码片段、URL、数字引用和 HTML 标签，并校验返回的段落 ID 与占位符。这些校验保证结构完整，不能保证译文语义正确。
+- 服务器版使用同一份论文库和翻译配置，暂不提供多用户账号和数据隔离。
+- MinerU 不同版本的输出格式可能变化，当前适配 V1 / V2 content list；其他 JSON 不能直接假定兼容。
+
+## 数据与隐私
+
+本机运行时，论文、图片、译文、数据库和设置默认保存在项目的 `data/` 中；服务器 Docker 部署使用持久化数据卷。数据目录和凭据文件已加入 Git 忽略规则。
+
+LLM 请求包含待翻译文字、段落 ID、论文标题、章节上下文和术语表，不发送 PDF 文件、图片和坐标。选择 MinerU 云端 API 时，原 PDF 会上传到 MinerU；本地 CLI / Python 解析模式使用所配置的本地运行环境。
+
+API Key / MinerU Token 保存在权限为 `0600` 的设置文件中，未做应用层加密，不回传前端，也不放入导出包。可使用 `PAPER_TRANSLATE_API_KEY` 环境变量提供未在设置中保存的翻译凭据。
+
+| 环境变量 | 用途 |
+| --- | --- |
+| `PAPER_TRANSLATE_DATA` | 修改应用数据目录 |
+| `PAPER_TRANSLATE_LIBRARY` | 修改默认的 MinerU 结果目录 |
+| `PAPER_TRANSLATE_API_KEY` | 为翻译服务提供 API Key |
+| `PAPER_TRANSLATE_NO_BROWSER` | 禁止启动脚本自动打开浏览器 |
+
+本机启动默认仅监听 `127.0.0.1`，并限制 Host 和跨站 Origin。服务器模式要求配置访问密码哈希和访问地址；公网域名访问使用 HTTPS。访问密码与 LLM API Key 是两组独立凭据，配置方法见部署指南。
+
+## 开发与验证
+
+后端开发（在项目根目录）：
 
 ```bash
 uv sync --frozen
 .venv/bin/python -m uvicorn server.app:app --host 127.0.0.1 --port 8765 --reload
 ```
 
-前端开发（另一个终端）：
+前端开发（另开终端，在项目根目录）：
 
 ```bash
 cd frontend
@@ -75,31 +139,23 @@ npm ci
 npm run dev
 ```
 
-打开 http://127.0.0.1:5173，Vite 将 `/api` 转发到后端。
+打开 **http://127.0.0.1:5173**，Vite 会将 `/api` 请求转发到后端。
 
-验证：
+运行验证（在项目根目录）：
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
-cd frontend
-npm run build
+npm --prefix frontend run build
 ```
 
-测试使用临时 PDF / JSON 和模拟的 LLM 返回，不调用付费服务。覆盖 V1/V2 几何映射、ZIP 安全、三种导出方式、秘密字段过滤、段落 ID / 占位符校验、断点续传，以及翻译过程中人工修改的版本保护。
+测试使用临时 PDF / JSON 和模拟的翻译响应，不调用付费服务。覆盖内容包括几何映射、导入与导出、凭据过滤、翻译协议、暂停续传、并发编辑保护、服务器访问控制和数据路径迁移。
 
-## 目录
+## 项目结构
 
 ```text
-server/
-  app.py          HTTP API、导入、设置、文件访问
-  mineru.py       MinerU 适配、本地 CLI / 云端解析
-  translation.py  翻译请求、受保护内容、响应校验
-  jobs.py         后台任务、暂停续传、版本保护
-  store.py        SQLite 文档存储与本机设置
-  exporter.py     Markdown、JSON 与图片打包
-frontend/src/
-  App.tsx         论文库、导入和设置
-  Reader.tsx      对照阅读、编辑和导出
-  PdfViewer.tsx   PDF.js 渲染与坐标高亮
-tests/            可离线运行的核心测试
+server/          FastAPI 后端、MinerU 适配、翻译任务和数据存储
+frontend/src/    React 阅读器、PDF 定位、设置与论文库界面
+scripts/         本机启动、MinerU 4 适配、SSH 连接和密码管理
+deploy/          服务器部署指南与 Caddy 配置示例
+tests/           核心功能与服务器部署测试
 ```

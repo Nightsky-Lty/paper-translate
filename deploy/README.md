@@ -1,66 +1,78 @@
-# 个人服务器部署
+# 服务器部署
 
-部署结构：`浏览器 → Caddy HTTPS → 127.0.0.1:8765 → 单个应用容器 → 持久化数据卷`。
+本指南说明如何将纸间部署到自己的 Linux 服务器，并通过 HTTPS 或 SSH 隧道访问。基础镜像提供论文阅读、翻译和结果导入；需要服务器自动解析 PDF 时，可额外构建 MinerU CPU 镜像。
 
-适用于个人使用，所有浏览器使用同一份论文库和翻译配置。认证使用浏览器原生的 HTTP Basic 登录提示；所有页面、API、PDF、图片和导出都要求访问密码，只有不包含配置或数据的 `/healthz` 是公开探活接口。密码以带随机盐的 scrypt 哈希保存，不放入源码或前端。
-
-## 准备
-
-- Linux 服务器，Docker Engine 与 Docker Compose。
-- 公网 HTTPS 部署需域名和 TCP 80 / 443；没有域名时可通过 SSH 隧道使用。
-- 已有 Caddy 时复用它；不要启动第二个服务争用 80 / 443。
-- 当前默认资源限制为 1 GB 内存、1.5 核 CPU。镜像不包含 MinerU CLI / GPU 模型，默认导入已有 ZIP，也可在网页配置 MinerU 云端 Token。
-
-## 通过 SSH 隧道访问
-
-没有域名时，可将 `PAPER_TRANSLATE_PUBLIC_URL` 设置为 `http://localhost:8765`，然后在自己的电脑运行：
-
-```bash
-python3 scripts/connect_remote.py --host your-server
+```text
+浏览器 → HTTPS 反向代理或 SSH 隧道 → 127.0.0.1:8765 → 应用容器 → 持久化数据卷
 ```
 
-将 `your-server` 替换为自己的 SSH 别名或 `用户名@服务器地址`。脚本会建立 SSH 隧道并打开 `http://localhost:8765`；首次连接前，请先使用 `ssh your-server` 确认服务器身份并完成 SSH 配置。保持终端窗口打开，关闭隧道后服务器任务仍会继续。
+服务器版使用单一工作空间，所有访问者共享论文库和翻译配置。所有页面、API、PDF、图片和导出均要求访问账号密码；只有不含配置或数据的 `/healthz` 可用于无认证探活。
 
-访问账号由 `.env` 中的 `PAPER_TRANSLATE_ACCESS_USER` 配置，密码在首次启动时创建。应用端口仅向服务器 loopback 发布，SSH 隧道访问无需修改 Caddy 站点。需要启用下述 MinerU 镜像时，在 `.env` 中加入 `COMPOSE_FILE=compose.yaml:compose.mineru.yaml`。
+## 1. 准备环境
 
-## 服务器 MinerU（CPU Basic）
+需要 Linux、Docker Engine 和 Docker Compose，以及用于翻译的 OpenAI 兼容服务。公网域名访问还需要域名解析、可访问的 TCP 80 / 443 和 HTTPS 反向代理；没有域名时可使用 SSH 隧道。
 
-`Dockerfile.mineru` 基于应用镜像，在 `/opt/mineru` 安装独立的 MinerU 4.0.12 环境，不安装 Torch / CUDA / VLM 模型。模型与缓存保存在独立 `mineru_models` 卷，论文与设置仍在 `paper_data` 卷。
+在服务器获取源码：
 
 ```bash
-# 显式选择基础配置，再构建 MinerU 扩展镜像。
-sudo docker compose -f compose.yaml build
-sudo docker compose -f compose.yaml -f compose.mineru.yaml build
+git clone https://github.com/Nightsky-Lty/paper-translate.git
+cd paper-translate
+cp .env.example .env
+chmod 600 .env
+```
 
-# 在 .env 加入 COMPOSE_FILE=compose.yaml:compose.mineru.yaml 后：
+编辑 `.env`：
+
+- HTTPS 访问：将 `PAPER_TRANSLATE_PUBLIC_URL` 设置为实际地址，如 `https://papers.example.com`。
+- SSH 隧道访问：设置为 `http://localhost:8765`。
+- `PAPER_TRANSLATE_ACCESS_USER` 为网页登录账号，可自行修改。
+
+访问地址应为站点根地址，不含子路径。以下示例使用 `sudo docker`；若当前用户已有 Docker 权限，可省略 `sudo`。
+
+## 2. 构建应用镜像
+
+```bash
+sudo docker compose -f compose.yaml build
+```
+
+基础镜像默认限制为 1 GB 内存、1.5 核 CPU，不包含 MinerU CLI 或模型。它可以导入已有结果 ZIP，也可以在网页设置中配置 MinerU 云端解析。
+
+若需要服务器本地解析，继续下面的可选步骤；否则跳到“创建访问密码并启动”。
+
+### 可选：安装 MinerU CPU Basic
+
+扩展镜像在 `/opt/mineru` 安装独立的 MinerU 4.0.12 环境，不安装 Torch / CUDA / VLM 模型。应用数据保存在 `paper_data` 卷，MinerU 模型与缓存保存在独立的 `mineru_models` 卷。
+
+```bash
+sudo docker compose -f compose.yaml -f compose.mineru.yaml build
+```
+
+在 `.env` 中加入以下配置，使后续 Compose 命令使用扩展镜像：
+
+```dotenv
+COMPOSE_FILE=compose.yaml:compose.mineru.yaml
+```
+
+下载并验证模型：
+
+```bash
 sudo docker compose run --rm --no-deps --entrypoint /opt/mineru/bin/mineru-kit app \
   models download --tier basic --small-backend onnx --source modelscope
 sudo docker compose run --rm --no-deps --entrypoint /opt/mineru/bin/mineru-kit app \
   models verify --tier basic --small-backend onnx
-sudo docker compose up -d
 ```
 
-若默认 PyPI 下载很慢，两个构建命令均可添加 `--build-arg PYTHON_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple`。应用依赖仍由 `uv.lock` 固定并校验哈希；MinerU 依赖的实际版本记录在镜像内 `/opt/mineru/installed-requirements.txt`。
+下载阶段使用 ModelScope；解析运行时设置为 `MINERU_MODEL_SOURCE=local`，使用已经下载的模型，不自动上传 PDF 到 MinerU 云端。Basic 模式不启用 LLM 辅助后处理。
 
-网页设置选择“服务器 CLI”，命令填写 `/opt/mineru/bin/python /app/scripts/parse_mineru4.py`，Backend 选择 `MinerU 4 · Basic（CPU）`。适配器调用 MinerU 4 的完整文档解析 API，保存图片和中间 JSON，再生成带坐标的 V1 content list；应用仍以原 PDF 作为对照来源。无需单独打开 MinerU WebUI，上传 PDF 后即可在服务器解析。
+扩展配置默认使用单篇串行解析、单页处理窗口、2 核 CPU、2500 MB 容器内存上限和 3500 MB 内存加交换空间上限。这些限制涵盖应用与解析子进程总和，应按服务器资源调整。复杂论文或较大扫描页仍可能达到内存上限。Standard / Advanced 需要额外的模型与运行资源，切换前需另行准备。
 
-运行时使用已经下载的本地模型（`MINERU_MODEL_SOURCE=local`）；解析不会自动上传论文到 MinerU 云端。下载阶段显式使用 ModelScope。Basic 模式不启用 LLM 辅助后处理。
+若默认 PyPI 下载较慢，两个构建命令均可添加 `--build-arg PYTHON_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple`。应用依赖由 `uv.lock` 固定并校验哈希；MinerU 依赖的实际版本记录在镜像内 `/opt/mineru/installed-requirements.txt`。
 
-`compose.mineru.yaml` 默认限制为单篇串行解析、单页处理窗口、2 核 CPU、2500 MB 容器内存和 3500 MB 内存加交换空间。限制适用于应用和 MinerU 子进程总和，应按服务器资源调整；较大的扫描页或复杂论文仍可能达到上限并解析失败。Standard / Advanced 需要额外的模型和运行资源，切换前需另行准备。翻译通过另行配置的 OpenAI 兼容接口完成。
+## 3. 创建访问密码并启动
 
-更新 MinerU 镜像时，先 `sudo docker compose -f compose.yaml build` 更新基础应用，再 `sudo docker compose build` 构建扩展镜像，然后 `sudo docker compose up -d`。不要删除模型卷；模型升级应重新下载并验证，保留旧镜像以便回退。
-
-## 构建并启动
-
-以下命令在服务器项目目录执行。示例使用 `sudo docker`；若当前用户已有 Docker 访问权限，可省略 `sudo`。
+首次启动前，在服务器终端交互输入访问密码：
 
 ```bash
-cp .env.example .env
-chmod 600 .env
-# 编辑 .env 中的 PAPER_TRANSLATE_PUBLIC_URL 和 PAPER_TRANSLATE_ACCESS_USER。
-sudo docker compose build
-
-# 首次创建访问密码：在服务器终端交互输入，不在命令行或聊天里填写。
 sudo docker compose run --rm --no-deps --entrypoint /app/.venv/bin/python app \
   scripts/create_access_password.py /app/data/access-password.hash
 
@@ -69,57 +81,92 @@ sudo docker compose ps
 curl --fail http://127.0.0.1:8765/healthz
 ```
 
-密码未创建时，应用会拒绝启动。不要使用 `docker compose up --scale app=2`，也不要增加 Uvicorn worker 数量：当前后台任务由单进程管理。
+密码以带随机盐的 scrypt 哈希保存在数据卷中，未创建哈希时应用会拒绝启动。不要把密码写进源码或命令行参数。
 
-通过 SSH 隧道使用时，可设置 `PAPER_TRANSLATE_PUBLIC_URL=http://localhost:8765`，然后在自己的电脑执行（将 `your-server` 替换为自己的 SSH 连接目标）：
+应用端口仅映射到服务器的 `127.0.0.1:8765`。保持单个应用容器和一个 Uvicorn worker，不使用 `--scale app=2`；当前后台任务由单进程管理。
+
+## 4. 配置访问方式
+
+### SSH 隧道
+
+先在本机完成 SSH 配置，并通过 `ssh your-server` 确认服务器身份。将 `your-server` 替换为自己的 SSH 别名或 `用户名@服务器地址`。
+
+在本机执行：
 
 ```bash
 ssh -N -L 127.0.0.1:8765:127.0.0.1:8765 your-server
 ```
 
-打开 `http://localhost:8765`，输入访问账号密码。这个 HTTP 地址仅限受 SSH 隧道保护的访问；公网域名配置必须使用 HTTPS。准备发布后，将 `.env` 改为最终的 `https://域名`，运行 `sudo docker compose up -d` 更新应用，再配置 Caddy。
+打开 **http://localhost:8765**，使用 `.env` 中的账号和刚创建的密码登录。该 HTTP 地址仅用于受 SSH 隧道保护的连接，不直接对公网开放。
 
-## HTTPS 与现有 Caddy
+也可在本机克隆的项目根目录运行以下辅助脚本，自动建立隧道并打开浏览器：
 
-参考 `deploy/Caddyfile.example`，把示例域名替换为实际域名，并作为独立站点加入已有 Caddy 配置。现有站点内容应保留。新配置必须先验证，再 reload：
+```bash
+python3 scripts/connect_remote.py --host your-server
+```
+
+保持连接终端打开，按 Ctrl+C 关闭隧道。断开连接不会停止服务器上已经提交的任务。本机 8765 端口需要空闲。
+
+### HTTPS 域名
+
+将 `.env` 中的 `PAPER_TRANSLATE_PUBLIC_URL` 设置为实际 HTTPS 域名，并运行 `sudo docker compose up -d` 应用配置。
+
+参考 [Caddyfile.example](Caddyfile.example) 配置反向代理。如果服务器已有 Caddy，在现有配置中加入独立站点，保留其他站点；不要启动第二个服务争用 80 / 443。修改后先验证，再 reload：
 
 ```bash
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 ```
 
-示例给上传请求保留 650 MB 限制，以容纳 PDF 和结果 ZIP 的组合。域名 DNS、80 / 443 放行和证书签发正常后，浏览器访问 `https://域名`。应用端口始终仅映射到服务器 loopback，不直接开放 8765。
+示例为上传保留了 650 MB 请求体限制。DNS、端口放行和证书签发完成后，访问配置的 HTTPS 地址。使用 CDN 或其他代理时，也需确认请求大小限制和超时设置可承载论文上传。
 
-如果使用了 CDN / 其他反向代理，还需要同时确认它的请求大小限制和超时设置能承载论文上传。
+## 5. 配置解析与翻译
 
-## 登录和翻译配置
+登录后进入应用设置：
 
-- **访问账号密码**：保护整个网页，由 `.env` 用户名及数据卷中的 `access-password.hash` 管理。
-- **LLM API Key / MinerU Token**：登录后在网页设置中填写，只保存在服务器数据卷，不会回传前端或打入镜像。
-- 网页的“MinerU 结果目录”是服务器文件目录，不能读取浏览器所在电脑上的 `~/MinerU`。推荐在电脑打包解析结果为 ZIP 后，通过网页上传。
-- 重新打开浏览器可能仍会使用浏览器缓存的 Basic 登录凭据。共享电脑请使用独立或隐私浏览会话。
+- **翻译服务**：填写 OpenAI 兼容的 Base URL、模型和 API Key，再进行短句连接测试。
+- **已有结果**：通过网页上传结果 ZIP；网页中的 MinerU 结果目录指服务器文件目录，不能读取浏览器所在电脑的文件夹。
+- **MinerU 云端**：选择云端解析并填写 Token，PDF 会上传到 MinerU。
+- **MinerU CPU 镜像**：选择“服务器 CLI”，将命令设为 `/opt/mineru/bin/python /app/scripts/parse_mineru4.py`，Backend 选择 `MinerU 4 · Basic（CPU）`。
 
-若首次部署使用了 `--random-password-file /app/data/initial-access-password.txt`，随机密码只在服务器数据卷的该文件中保存，权限为 `0600`。可以在自己的终端取回（此命令会在你的终端显示密码，不要粘贴进聊天）：
+访问密码保护整个网页，LLM API Key / MinerU Token 则用于外部服务，两者互相独立。服务凭据保存在服务器数据卷的设置文件中，不回传前端或打入镜像。
 
-```bash
-ssh your-server 'cd /path/to/paper-translate && sudo docker compose exec -T app cat /app/data/initial-access-password.txt'
-```
+## 密码管理
 
-将 `your-server` 和 `/path/to/paper-translate` 分别替换为自己的 SSH 连接目标和服务器上的项目目录。
-
-修改密码时使用交互创建命令覆盖哈希，再执行 `sudo docker compose restart app`。重启后旧凭据失效；重启前请暂停翻译并等待当前请求结束。
-
-## 更新与备份
-
-源码更新不会覆盖论文、图片或设置。更新方式：
+修改密码时，重新运行上面的交互式创建命令覆盖哈希，再执行：
 
 ```bash
-sudo docker compose up -d --build
+sudo docker compose restart app
 ```
 
-应用重启后，未完成任务暂停，需在界面继续翻译。更新镜像前可用 `sudo docker image tag paper-translate:local paper-translate:previous` 保存上一版本；数据目录应另行备份。
+重启前请暂停任务并等待当前请求结束。重启后旧密码失效；浏览器可能缓存 Basic 登录凭据，可使用独立浏览器会话重新登录。
 
-备份前暂停任务并停止应用，确保数据库和文件一致：
+自动化部署可使用密码脚本的 `--random-password-file /app/data/initial-access-password.txt` 参数生成随机密码，文件权限为 `0600`，脚本不会将密码打印到日志。仅在使用此方式创建密码时，才会存在该文件，可在服务器项目目录通过以下命令查看：
+
+```bash
+sudo docker compose exec -T app cat /app/data/initial-access-password.txt
+```
+
+## 更新
+
+更新源码后重建并启动基础镜像：
+
+```bash
+git pull --ff-only
+sudo docker compose -f compose.yaml build
+```
+
+若启用了 MinerU 扩展配置，还需重建扩展镜像：
+
+```bash
+sudo docker compose build
+```
+
+最后执行 `sudo docker compose up -d`。更新镜像不会覆盖持久化数据；重启后未完成任务会暂停，需在界面手动继续。模型升级后应重新下载并验证，保留旧镜像与数据备份以便回退。
+
+## 备份与迁移
+
+备份包含论文、译文、服务凭据和密码哈希，应保存在可信位置。备份前暂停任务并停止应用，确保数据库与文件一致：
 
 ```bash
 mkdir -p backups
@@ -130,16 +177,17 @@ chmod 600 backups/paper-data.tar.gz
 sudo docker compose up -d app
 ```
 
-备份包含论文、译文、API Key 和访问密码哈希，应只保存在你信任的位置。不要使用 `docker compose down -v`，该参数会删除数据卷。
+不要使用 `docker compose down -v`，该参数会删除数据卷。使用本地 MinerU 时，模型卷可另行备份，或在恢复后重新下载模型。
 
-本机数据迁移到服务器时，应先停止本机应用、备份完整 `data/`，再恢复到服务器卷中；文档路径会自动重定位。旧设置中的本机 MinerU 路径应改为服务器路径或云端模式。恢复备份时请保留服务器已设置的访问密码文件，避免意外替换登录凭据。
+从本机迁移到服务器时，先停止本机应用并备份完整 `data/`，再恢复到服务器数据卷。文档路径会自动重定位；设置中的 MinerU 命令和结果目录需要按服务器环境调整。恢复时保留服务器已有的访问密码文件，避免替换登录凭据。
 
-## 验收
+## 部署检查
 
-1. 未登录访问首页、`/api/settings`、原 PDF 或图片，应返回 401。
-2. 登录后可以导入 ZIP、阅读 PDF、点击段落定位，以及导出完整包。
-3. 前端显示“远端工作空间 / 数据保存在服务器”。
-4. 重建容器后，已导入的论文和译文仍然存在。
-5. 填入 LLM 服务后进行一次短句连接测试，再翻译少量段落。
+1. 未登录访问首页、设置、原 PDF 或图片，返回 401。
+2. 登录后可以导入论文、阅读 PDF、定位段落，以及导出完整包。
+3. 网页显示远端工作空间，数据保存在服务器。
+4. 重建容器后，论文和译文仍然存在。
+5. 使用本地 MinerU 时，先解析少量页面，确认模型、坐标和资源占用符合预期。
+6. 填写翻译服务后进行连接测试，再翻译少量段落；外部调用按服务商规则计费。
 
-官方参考：[Caddy 反向代理](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)、[uv Docker 集成](https://docs.astral.sh/uv/guides/integration/docker/)、[FastAPI HTTP Basic](https://fastapi.tiangolo.com/advanced/security/http-basic-auth/)。
+参考：[Caddy 反向代理](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)、[uv Docker 集成](https://docs.astral.sh/uv/guides/integration/docker/)、[FastAPI HTTP Basic](https://fastapi.tiangolo.com/advanced/security/http-basic-auth/)。

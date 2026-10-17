@@ -13,7 +13,7 @@ import webbrowser
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", default="tencentcloud", help="Configured SSH host alias")
+    parser.add_argument("--host", required=True, help="SSH host alias or user@hostname")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
     if args.host.startswith("-"):
