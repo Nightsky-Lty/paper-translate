@@ -4,14 +4,14 @@
 
 服务器部署说明见 [deploy/README.md](deploy/README.md)，包含 Docker、HTTPS、访问密码和备份。远端模式下，网页会明确标注数据保存在服务器；所有页面、API、PDF 和图片均需访问密码。当前为个人共享工作空间，不提供多用户数据隔离。
 
-连接 tencentcloud 上的远端版本可双击 `连接远端纸间.command`：它通过 SSH 隧道打开 `http://localhost:8765`，需要已有的 `tencentcloud` SSH 配置。服务器版可选安装 MinerU 4 CPU Basic，上传 PDF 后在服务器完成解析。
+服务器版可选安装 MinerU 4 CPU Basic，上传 PDF 后在服务器完成解析。支持通过 HTTPS 或 SSH 隧道访问，配置方法见部署说明。
 
 ## 启动
 
 需要 Python 3.11+、[uv](https://docs.astral.sh/uv/) 和 Node.js 20+。
 
 ```bash
-cd /Users/polaris/CS/paper-translate
+cd paper-translate
 bash scripts/start.sh
 ```
 
@@ -32,7 +32,7 @@ bash scripts/start.sh
 
 ## 现有 MinerU 与新 PDF
 
-已在本机检测到 `/Applications/MinerU.app` 桌面版 0.13.1 和 `~/MinerU` 解析结果。桌面应用不等于命令行解析器，因此默认使用 **已有 MinerU 结果** 模式。
+默认使用 **已有 MinerU 结果** 模式，可导入桌面端导出的解析结果。若要上传 PDF 后自动解析，需要配置 MinerU CLI、Python 环境或云端 API。
 
 - **已有结果目录**：需要 `*_content_list.json`（V1）或 `*content_list_v2.json`（V2）、原 PDF，以及引用到的 `images/`。优先使用 V1，以读取明确的 `page_idx`。V1/V2 的 bbox 从 0–1000 转换为应用统一的 0–1 坐标。
 - **PDF + 结果 ZIP**：在导入窗口选择 ZIP；原 PDF 可放在 ZIP 里，或与 ZIP 一起上传。支持 ZIP 中的一层或多层目录。

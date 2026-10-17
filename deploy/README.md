@@ -11,11 +11,17 @@
 - 已有 Caddy 时复用它；不要启动第二个服务争用 80 / 443。
 - 当前默认资源限制为 1 GB 内存、1.5 核 CPU。镜像不包含 MinerU CLI / GPU 模型，默认导入已有 ZIP，也可在网页配置 MinerU 云端 Token。
 
-## tencentcloud：无域名访问
+## 通过 SSH 隧道访问
 
-项目目录为 `/home/ubuntu/paper-translate`。本机双击 `连接远端纸间.command`，或运行 `python3 scripts/connect_remote.py`，建立到 `tencentcloud` 的 SSH 隧道并打开 `http://localhost:8765`。保持终端窗口打开；关闭隧道后服务器上的任务仍会继续。访问账号为 `reader`，初始密码按下方命令在自己的终端取回。
+没有域名时，可将 `PAPER_TRANSLATE_PUBLIC_URL` 设置为 `http://localhost:8765`，然后在自己的电脑运行：
 
-服务器只向 loopback 发布 8765，不修改现有 Caddy 站点。当前 `.env` 使用 `PAPER_TRANSLATE_PUBLIC_URL=http://localhost:8765`，并通过 `COMPOSE_FILE=compose.yaml:compose.mineru.yaml` 启用下述 MinerU 镜像。
+```bash
+python3 scripts/connect_remote.py --host your-server
+```
+
+将 `your-server` 替换为自己的 SSH 别名或 `用户名@服务器地址`。脚本会建立 SSH 隧道并打开 `http://localhost:8765`；首次连接前，请先使用 `ssh your-server` 确认服务器身份并完成 SSH 配置。保持终端窗口打开，关闭隧道后服务器任务仍会继续。
+
+访问账号由 `.env` 中的 `PAPER_TRANSLATE_ACCESS_USER` 配置，密码在首次启动时创建。应用端口仅向服务器 loopback 发布，SSH 隧道访问无需修改 Caddy 站点。需要启用下述 MinerU 镜像时，在 `.env` 中加入 `COMPOSE_FILE=compose.yaml:compose.mineru.yaml`。
 
 ## 服务器 MinerU（CPU Basic）
 
@@ -40,15 +46,13 @@ sudo docker compose up -d
 
 运行时使用已经下载的本地模型（`MINERU_MODEL_SOURCE=local`）；解析不会自动上传论文到 MinerU 云端。下载阶段显式使用 ModelScope。Basic 模式不启用 LLM 辅助后处理。
 
-约 4 GB 内存的 tencentcloud 使用单篇串行解析、单页处理窗口、2 核 CPU、2500 MB 容器内存上限和 3500 MB 内存加交换空间上限。限制适用于应用和 MinerU 子进程总和；较大的扫描页或复杂论文仍可能达到上限并解析失败。Standard / Advanced 需要更多资源，不能只在这台机器上切换选项就期待稳定运行。翻译仍通过另行配置的 OpenAI 兼容接口完成。
-
-2026-10-17 部署验收：两页合成英文 PDF（含表格）从上传到完成约 14 秒，12 个内容块全部带坐标，容器峰值约 1.13 GiB；同内容的两页扫描版约 18 秒，16 个内容块全部带坐标，峰值约 1.43 GiB。四种格式的 ZIP 导出、PDF 读取、未登录拒绝访问、跨站来源拒绝访问及重启后的文档保留均通过。该结果用于检查流程，不代表复杂论文或大扫描件的性能。验收文档已删除，未调用付费翻译接口。
+`compose.mineru.yaml` 默认限制为单篇串行解析、单页处理窗口、2 核 CPU、2500 MB 容器内存和 3500 MB 内存加交换空间。限制适用于应用和 MinerU 子进程总和，应按服务器资源调整；较大的扫描页或复杂论文仍可能达到上限并解析失败。Standard / Advanced 需要额外的模型和运行资源，切换前需另行准备。翻译通过另行配置的 OpenAI 兼容接口完成。
 
 更新 MinerU 镜像时，先 `sudo docker compose -f compose.yaml build` 更新基础应用，再 `sudo docker compose build` 构建扩展镜像，然后 `sudo docker compose up -d`。不要删除模型卷；模型升级应重新下载并验证，保留旧镜像以便回退。
 
 ## 构建并启动
 
-以下命令在服务器项目目录执行。`tencentcloud` 已有 Docker，但当前 SSH 用户使用 Docker 需要 `sudo`。
+以下命令在服务器项目目录执行。示例使用 `sudo docker`；若当前用户已有 Docker 访问权限，可省略 `sudo`。
 
 ```bash
 cp .env.example .env
@@ -67,13 +71,13 @@ curl --fail http://127.0.0.1:8765/healthz
 
 密码未创建时，应用会拒绝启动。不要使用 `docker compose up --scale app=2`，也不要增加 Uvicorn worker 数量：当前后台任务由单进程管理。
 
-仅需私下验收时，可先设置 `PAPER_TRANSLATE_PUBLIC_URL=http://localhost:8765`，然后在自己的电脑执行：
+通过 SSH 隧道使用时，可设置 `PAPER_TRANSLATE_PUBLIC_URL=http://localhost:8765`，然后在自己的电脑执行（将 `your-server` 替换为自己的 SSH 连接目标）：
 
 ```bash
-ssh -N -L 8765:127.0.0.1:8765 tencentcloud
+ssh -N -L 127.0.0.1:8765:127.0.0.1:8765 your-server
 ```
 
-打开 `http://localhost:8765`，输入访问账号密码。这个 HTTP 地址仅限受 SSH 隧道保护的验收；公网域名配置必须使用 HTTPS。准备发布后，将 `.env` 改为最终的 `https://域名`，运行 `sudo docker compose up -d` 更新应用，再配置 Caddy。
+打开 `http://localhost:8765`，输入访问账号密码。这个 HTTP 地址仅限受 SSH 隧道保护的访问；公网域名配置必须使用 HTTPS。准备发布后，将 `.env` 改为最终的 `https://域名`，运行 `sudo docker compose up -d` 更新应用，再配置 Caddy。
 
 ## HTTPS 与现有 Caddy
 
@@ -98,8 +102,10 @@ sudo systemctl reload caddy
 若首次部署使用了 `--random-password-file /app/data/initial-access-password.txt`，随机密码只在服务器数据卷的该文件中保存，权限为 `0600`。可以在自己的终端取回（此命令会在你的终端显示密码，不要粘贴进聊天）：
 
 ```bash
-ssh tencentcloud 'cd /home/ubuntu/paper-translate && sudo docker compose exec -T app cat /app/data/initial-access-password.txt'
+ssh your-server 'cd /path/to/paper-translate && sudo docker compose exec -T app cat /app/data/initial-access-password.txt'
 ```
+
+将 `your-server` 和 `/path/to/paper-translate` 分别替换为自己的 SSH 连接目标和服务器上的项目目录。
 
 修改密码时使用交互创建命令覆盖哈希，再执行 `sudo docker compose restart app`。重启后旧凭据失效；重启前请暂停翻译并等待当前请求结束。
 
