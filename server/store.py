@@ -31,15 +31,15 @@ class Store:
             row = con.execute("SELECT body FROM documents WHERE id=?", (doc_id,)).fetchone()
         if row is None:
             raise KeyError(doc_id)
-        return json.loads(row[0])
+        return self._read_document(row[0])
 
     def all(self) -> list[dict]:
         with self.connect() as con:
-            return [json.loads(row[0]) for row in con.execute("SELECT body FROM documents")]
+            return [self._read_document(row[0]) for row in con.execute("SELECT body FROM documents")]
 
     def put(self, doc: dict):
         with self.connect() as con:
-            con.execute("INSERT INTO documents(id,body) VALUES(?,?)", (doc["id"], json.dumps(doc, ensure_ascii=False)))
+            con.execute("INSERT INTO documents(id,body) VALUES(?,?)", (doc["id"], self._write_document(doc)))
 
     def update(self, doc_id: str, change: Callable[[dict], None]) -> dict:
         # Read/modify/write in one transaction, including edits during translation.
@@ -48,10 +48,40 @@ class Store:
             row = con.execute("SELECT body FROM documents WHERE id=?", (doc_id,)).fetchone()
             if row is None:
                 raise KeyError(doc_id)
-            doc = json.loads(row[0])
+            doc = self._read_document(row[0])
             change(doc)
             doc["updated_at"] = now()
-            con.execute("UPDATE documents SET body=? WHERE id=?", (json.dumps(doc, ensure_ascii=False), doc_id))
+            con.execute("UPDATE documents SET body=? WHERE id=?", (self._write_document(doc), doc_id))
+        return doc
+
+    def _write_document(self, doc: dict) -> str:
+        result = dict(doc)
+        for field in ("pdf_path", "asset_root"):
+            if result.get(field):
+                path = Path(result[field]).resolve()
+                if path.is_relative_to(self.root):
+                    result[field] = str(path.relative_to(self.root))
+        return json.dumps(result, ensure_ascii=False)
+
+    def _read_document(self, body: str) -> dict:
+        doc = json.loads(body)
+        for field in ("pdf_path", "asset_root"):
+            value = doc.get(field)
+            if not value:
+                continue
+            path = Path(value)
+            if not path.is_absolute():
+                doc[field] = str(self.root / path)
+            else:
+                # Relocate older absolute records after copying the complete data directory.
+                parts = path.parts
+                marker = ("documents", doc["id"])
+                for index in range(len(parts) - 1):
+                    if parts[index:index + 2] == marker:
+                        candidate = self.root.joinpath(*parts[index:])
+                        if candidate.exists():
+                            doc[field] = str(candidate)
+                        break
         return doc
 
     def delete(self, doc_id: str):
@@ -70,7 +100,7 @@ DEFAULT_SETTINGS = {
     "mineru_backend": "pipeline",
     "parser": "existing",
     "mineru_token": "",
-    "library_path": str(Path.home() / "MinerU"),
+    "library_path": os.environ.get("PAPER_TRANSLATE_LIBRARY", str(Path.home() / "MinerU")),
 }
 
 

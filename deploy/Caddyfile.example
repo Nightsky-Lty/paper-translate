@@ -1,0 +1,9 @@
+# Add this as a separate site in the existing Caddy configuration.
+# Replace the example domain with your own domain before validating and reloading.
+papers.example.com {
+    encode zstd gzip
+    request_body {
+        max_size 650MB
+    }
+    reverse_proxy 127.0.0.1:8765
+}

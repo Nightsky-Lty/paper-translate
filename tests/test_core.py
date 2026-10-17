@@ -327,6 +327,45 @@ class ApiTests(unittest.TestCase):
             parser.assert_not_called()
         self.assertEqual(self.store.get(doc["id"])["job"]["state"],"paused")
 
+    def test_parse_wait_can_be_cancelled_and_releases_resource(self):
+        doc = self.import_doc()
+        event = threading.Event()
+        self.jobs.parse_lock.acquire()
+        with patch.object(self.jobs, "_parse") as parser:
+            worker = threading.Thread(target=self.jobs.parse, args=(doc["id"], event))
+            worker.start()
+            event.set()
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
+            parser.assert_not_called()
+        self.jobs.parse_lock.release()
+        with patch.object(self.jobs, "_parse", side_effect=ValueError("parse failed")):
+            with self.assertRaises(ValueError):
+                self.jobs.parse(doc["id"], threading.Event())
+        self.assertTrue(self.jobs.parse_lock.acquire(blocking=False))
+        self.jobs.parse_lock.release()
+
+    def test_parse_tasks_do_not_overlap(self):
+        doc = self.import_doc()
+        first_entered, release, second_entered = threading.Event(), threading.Event(), threading.Event()
+        def parse(doc_id, event):
+            if not first_entered.is_set():
+                first_entered.set()
+                release.wait(timeout=3)
+            else:
+                second_entered.set()
+        with patch.object(self.jobs, "_parse", side_effect=parse):
+            first = threading.Thread(target=self.jobs.parse, args=(doc["id"], threading.Event()))
+            second = threading.Thread(target=self.jobs.parse, args=(doc["id"], threading.Event()))
+            first.start()
+            self.assertTrue(first_entered.wait(timeout=2))
+            second.start()
+            self.assertFalse(second_entered.wait(timeout=.1))
+            release.set()
+            first.join(timeout=2)
+            second.join(timeout=2)
+            self.assertTrue(second_entered.is_set())
+
 
 if __name__=="__main__":
     unittest.main()

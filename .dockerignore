@@ -1,0 +1,14 @@
+.git
+.venv
+.cache
+data
+**/node_modules
+frontend/dist
+**/__pycache__
+**/*.pyc
+**/*.tsbuildinfo
+.env
+.env.*
+deploy/secrets
+*.log
+.DS_Store

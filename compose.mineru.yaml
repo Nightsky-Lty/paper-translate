@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.mineru
+    image: paper-translate:mineru
+    environment:
+      HOME: /app/mineru
+      HF_HOME: /app/mineru/huggingface
+      MODELSCOPE_CACHE: /app/mineru/modelscope-cache
+    volumes:
+      - mineru_models:/app/mineru
+    mem_limit: 2500m
+    memswap_limit: 3500m
+    cpus: 2
+    pids_limit: 256
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+
+volumes:
+  mineru_models:

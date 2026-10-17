@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 const Reader = lazy(() => import("./Reader"));
 import { useDialog } from "./useDialog";
+import { useRuntime } from "./Runtime";
 import {
   active,
   api,
@@ -66,6 +67,7 @@ function SettingsDialog({
   onClose: () => void;
   notify: (s: string, error?: boolean) => void;
 }) {
+  const { storageLabel, isServer } = useRuntime();
   const [values, setValues] = useState<Settings | null>(null);
   const [tab, setTab] = useState("llm");
   const [busy, setBusy] = useState(false);
@@ -182,8 +184,8 @@ function SettingsDialog({
                 <div className="info-note">
                   <ShieldCheck size={17} />
                   <span>
-                    论文和阅读记录保存在本机。开始翻译时，所选段落文字会发送到你配置的
-                    LLM 服务。
+                    论文和阅读记录保存在{storageLabel}
+                    。开始翻译时，所选段落文字会发送到你配置的 LLM 服务。
                   </span>
                 </div>
                 <label className="field-label" htmlFor="base-url">
@@ -287,8 +289,10 @@ function SettingsDialog({
                     },
                     {
                       id: "cli",
-                      name: "本地命令行",
-                      desc: "调用本机 MinerU CLI 解析新 PDF",
+                      name: isServer ? "服务器命令行" : "本地命令行",
+                      desc: isServer
+                        ? "调用服务器上的 MinerU CLI 解析新 PDF"
+                        : "调用本机 MinerU CLI 解析新 PDF",
                       icon: HardDrive,
                     },
                     {
@@ -313,7 +317,9 @@ function SettingsDialog({
                   ))}
                 </div>
                 <label className="field-label" htmlFor="library-path">
-                  MinerU 桌面版论文目录
+                  {isServer
+                    ? "服务器上的 MinerU 结果目录"
+                    : "MinerU 桌面版论文目录"}
                 </label>
                 <input
                   id="library-path"
@@ -343,6 +349,10 @@ function SettingsDialog({
                       onChange={(e) => set("mineru_backend", e.target.value)}
                     >
                       <option value="pipeline">pipeline</option>
+                      <option value="basic">MinerU 4 · Basic（CPU）</option>
+                      <option value="standard">MinerU 4 · Standard</option>
+                      <option value="advanced">MinerU 4 · Advanced</option>
+                      <option value="flash">MinerU 4 · Flash</option>
                       <option value="vlm-auto-engine">vlm-auto-engine</option>
                       <option value="hybrid-auto-engine">
                         hybrid-auto-engine
@@ -350,8 +360,9 @@ function SettingsDialog({
                       <option value="vlm-http-client">vlm-http-client</option>
                     </select>
                     <p className="field-help">
-                      适用于支持 -p / -o / -b 的 MinerU 2.x
-                      CLI；桌面版应用本身不等于 CLI。
+                      MinerU 2.x 使用原生 CLI；MinerU 4 使用随项目提供的
+                      parse_mineru4.py 适配器。约 4 GB 内存的服务器建议使用
+                      Basic。
                     </p>
                   </>
                 )}
@@ -437,7 +448,7 @@ function SettingsDialog({
         )}
         <div className="modal-footer">
           <span>
-            <HardDrive size={13} /> 设置仅保存在本机
+            <HardDrive size={13} /> 设置仅保存在{storageLabel}
           </span>
           <button
             className="button primary"
@@ -468,7 +479,8 @@ function ImportDialog({
   onSettings: () => void;
   notify: (s: string, error?: boolean) => void;
 }) {
-  const [tab, setTab] = useState("library");
+  const { isServer } = useRuntime();
+  const [tab, setTab] = useState(isServer ? "files" : "library");
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
@@ -706,7 +718,9 @@ function ImportDialog({
                       ? "当前使用已有解析结果。仅导入 PDF 时，需先配置本地 CLI 或云端解析。"
                       : parser === "cloud"
                         ? "当前使用 MinerU 云端解析。导入后，PDF 将上传至 MinerU。"
-                        : "当前使用本地 MinerU CLI，导入后会在本机解析。"}
+                        : isServer
+                          ? "当前使用服务器上的 MinerU CLI，导入后会在服务器解析。"
+                          : "当前使用本地 MinerU CLI，导入后会在本机解析。"}
                 </span>
               </div>
             </>
@@ -744,6 +758,7 @@ function ImportDialog({
 }
 
 export default function App() {
+  const { storageLabel, workspaceLabel, workspaceEnglish } = useRuntime();
   const [papers, setPapers] = useState<Paper[]>([]);
   const [paper, setPaper] = useState<Paper | null>(null);
   const [loading, setLoading] = useState(true);
@@ -879,7 +894,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <div className="local-badge">
             <span className="status-dot" />
-            <span>本地工作空间</span>
+            <span>{workspaceLabel}</span>
           </div>
           <p>理解，不必隔着语言。</p>
           <div className="sidebar-version">
@@ -918,10 +933,10 @@ export default function App() {
             <>
               <header className="library-topbar">
                 <span>
-                  <span className="status-dot" /> LOCAL WORKSPACE
+                  <span className="status-dot" /> {workspaceEnglish}
                 </span>
                 <div>
-                  <HardDrive size={14} /> 数据保存在本机
+                  <HardDrive size={14} /> 数据保存在{storageLabel}
                   <button
                     className="icon-button"
                     onClick={() => setModal("settings")}
@@ -1206,7 +1221,7 @@ export default function App() {
                   <span>纸间 · 让理解发生</span>
                   <div>
                     <ShieldCheck size={13} />
-                    本地保存
+                    {storageLabel}保存
                     <Languages size={13} />
                     自由对照
                     <LinkIcon />

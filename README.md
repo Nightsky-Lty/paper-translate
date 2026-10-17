@@ -1,6 +1,10 @@
 # 纸间 · Paper Translate
 
-一个本地运行的双语论文阅读工具：MinerU 负责解析 PDF，LLM 仅负责翻译，程序保存原文、译文和 PDF 坐标之间的对应关系。
+一个支持本机运行和个人服务器部署的双语论文阅读工具：MinerU 负责解析 PDF，LLM 仅负责翻译，程序保存原文、译文和 PDF 坐标之间的对应关系。
+
+服务器部署说明见 [deploy/README.md](deploy/README.md)，包含 Docker、HTTPS、访问密码和备份。远端模式下，网页会明确标注数据保存在服务器；所有页面、API、PDF 和图片均需访问密码。当前为个人共享工作空间，不提供多用户数据隔离。
+
+连接 tencentcloud 上的远端版本可双击 `连接远端纸间.command`：它通过 SSH 隧道打开 `http://localhost:8765`，需要已有的 `tencentcloud` SSH 配置。服务器版可选安装 MinerU 4 CPU Basic，上传 PDF 后在服务器完成解析。
 
 ## 启动
 
@@ -33,6 +37,7 @@ bash scripts/start.sh
 - **已有结果目录**：需要 `*_content_list.json`（V1）或 `*content_list_v2.json`（V2）、原 PDF，以及引用到的 `images/`。优先使用 V1，以读取明确的 `page_idx`。V1/V2 的 bbox 从 0–1000 转换为应用统一的 0–1 坐标。
 - **PDF + 结果 ZIP**：在导入窗口选择 ZIP；原 PDF 可放在 ZIP 里，或与 ZIP 一起上传。支持 ZIP 中的一层或多层目录。
 - **本地 CLI**：在设置中启用并填写 `mineru` 可执行文件路径。适配支持 `-p / -o / -b` 的 MinerU 2.x CLI。程序用参数数组启动进程，不执行 shell。模型文件和 CLI 需要自行安装；本项目不会改变桌面版安装。
+- **MinerU 4 CLI**：使用 `<MinerU 环境>/bin/python <项目路径>/scripts/parse_mineru4.py` 作为命令，选择对应的 Basic / Standard / Advanced / Flash。适配器调用完整文档解析 API 并生成 V1 content list，保留图片和原文坐标。服务器 CPU 部署步骤见部署说明；应用内解析始终串行执行，排队时仍可暂停。
 - **MinerU 云端 API**：在设置中启用并填写 Token。导入新 PDF 时，文件会上传到 MinerU 官方 API，程序获取结果后在本地保存。已提交云端的任务可能在本地暂停后继续运行。
 
 不同版本 MinerU 的输出契约可能变化；当前适配器支持已验证的 V1 / V2 内容列表，不假定所有 JSON 都具有相同结构。需要新格式时修改 `server/mineru.py`，无需改动阅读器或翻译协议。
@@ -49,7 +54,9 @@ LLM 请求只包含段落 ID 与文字，以及论文标题、章节上下文和
 
 实际论文、图片、SQLite 数据库和设置保存在 `data/`，已被 `.gitignore` 排除。API Key / MinerU Token 保存在权限为 `0600` 的本机设置文件中（不是加密保险库），不会回传给前端或放入导出包。也可以使用环境变量 `PAPER_TRANSLATE_API_KEY` 为未保存 Key 的环境提供凭据。`PAPER_TRANSLATE_DATA` 可指定其他数据目录。
 
-服务默认仅监听 `127.0.0.1`，并限制 API 的 Host 和跨站 Origin。它面向个人本机使用，不是经过身份验证的多用户公网服务。
+本机启动脚本默认仅监听 `127.0.0.1`，并限制 Host 和跨站 Origin。服务器模式通过 `PAPER_TRANSLATE_MODE=server` 显式启用，必须配置访问密码哈希和公开地址；公网地址必须使用 HTTPS。Docker 数据保存在持久化卷中，访问密码与 LLM API Key 是两组不同的凭据。
+
+文档文件路径以相对于数据目录的形式保存，完整迁移数据目录后可继续使用；较早版本的绝对文档路径也会在迁移后自动重定位。迁移需先停止应用以保证 SQLite、PDF 和图片的一致性。
 
 ## 开发与测试
 

@@ -28,6 +28,7 @@ import rehypeKatex from "rehype-katex";
 import DOMPurify from "dompurify";
 import PdfViewer from "./PdfViewer";
 import { useDialog } from "./useDialog";
+import { useRuntime } from "./Runtime";
 import {
   active,
   api,
@@ -107,6 +108,7 @@ export default function Reader({
     const saved = localStorage.getItem("paper-mode");
     return MODES.some((m) => m.id === saved) ? (saved as Mode) : "paragraph";
   });
+  const { storageLabel } = useRuntime();
   const [showPdf, setShowPdf] = useState(true);
   const [selected, setSelected] = useState("");
   const [page, setPage] = useState(0);
@@ -523,7 +525,7 @@ export default function Reader({
             <div className="progress-track">
               <i style={{ width: percent + "%" }} />
             </div>
-            <small>修改与翻译自动保存在本机</small>
+            <small>修改与翻译自动保存在{storageLabel}</small>
           </div>
         </aside>
         {showPdf && (

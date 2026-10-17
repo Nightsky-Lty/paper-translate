@@ -12,3 +12,4 @@ frontend/dist/
 !.env.sample
 .DS_Store
 *.log
+deploy/secrets/

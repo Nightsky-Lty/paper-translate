@@ -15,6 +15,7 @@ class Jobs:
         self.pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="paper")
         self.events: dict[str, threading.Event] = {}
         self.lock = threading.RLock()
+        self.parse_lock = threading.Lock()
 
     def start(self, doc_id: str, kind: str, block_ids: list[str] | None = None):
         with self.lock:
@@ -61,6 +62,18 @@ class Jobs:
                 self.events.pop(doc_id, None)
 
     def parse(self, doc_id: str, event: threading.Event):
+        self.store.update(doc_id, lambda d: d["job"].update(message="等待解析资源…"))
+        while not self.parse_lock.acquire(timeout=0.5):
+            if event.is_set():
+                return
+        try:
+            if not event.is_set():
+                self.store.update(doc_id, lambda d: d["job"].update(message="正在解析 PDF…"))
+                self._parse(doc_id, event)
+        finally:
+            self.parse_lock.release()
+
+    def _parse(self, doc_id: str, event: threading.Event):
         doc, settings = self.store.get(doc_id), self.settings.get()
         output = self.store.root / "documents" / doc_id / "parsed"
         output.mkdir(parents=True, exist_ok=True)

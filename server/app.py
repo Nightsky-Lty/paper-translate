@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
 from . import mineru
+from .access import AccessPolicy
 from .exporter import export_zip, markdown, portable_document
 from .jobs import Jobs
 from .store import Settings, Store, now, summary
@@ -25,6 +27,7 @@ DATA = Path(os.environ.get("PAPER_TRANSLATE_DATA", str(ROOT / "data")))
 store = Store(DATA)
 settings = Settings(store.root)
 jobs = Jobs(store, settings)
+access = AccessPolicy.from_environment()
 
 
 @asynccontextmanager
@@ -41,16 +44,27 @@ app = FastAPI(title="纸间 · Paper Translate", lifespan=lifespan)
 
 
 @app.middleware("http")
-async def local_only(request: Request, call_next):
-    # Prevent drive-by cross-origin requests to a local app with saved credentials.
-    if request.url.path.startswith("/api"):
-        host = urlparse("//" + request.headers.get("host", "")).hostname
-        if host not in ("127.0.0.1", "localhost", "testserver", "::1"):
-            return JSONResponse({"detail": "仅允许本机访问。"}, status_code=403)
-        origin = request.headers.get("origin")
-        if origin and origin not in ("http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:8765", "http://localhost:8765"):
-            return JSONResponse({"detail": "不允许跨站访问本地应用。"}, status_code=403)
-    return await call_next(request)
+async def access_control(request: Request, call_next):
+    if not access.allowed(request.headers.get("host", ""), request.headers.get("origin")):
+        return JSONResponse({"detail": "不允许此访问地址或跨站来源。"}, status_code=403)
+    if request.url.path != "/healthz" and access.mode == "server":
+        authorized = await asyncio.to_thread(access.authenticate, request.headers.get("authorization", ""))
+        if not authorized:
+            return JSONResponse({"detail": "请使用访问账号和密码登录。"}, status_code=401,
+                                headers={"WWW-Authenticate": 'Basic realm="Paper Translate", charset="UTF-8"',
+                                         "Cache-Control": "no-store"})
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["X-Frame-Options"] = "DENY"
+    if request.url.path.startswith("/api") and "/assets/" not in request.url.path:
+        response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@app.get("/healthz", include_in_schema=False)
+def readiness():
+    return {"application": "paper-translate", "status": "ok"}
 
 
 @app.exception_handler(KeyError)
@@ -79,7 +93,7 @@ def new_document(doc_id: str, title: str) -> dict:
 def health():
     import shlex
     command = shlex.split(settings.get()["mineru_command"])
-    return {"application": "paper-translate", "status": "ok", "mineru_desktop": Path("/Applications/MinerU.app").exists(), "mineru_cli": bool(command and (shutil.which(command[0]) or Path(command[0]).is_file()))}
+    return {"application": "paper-translate", "status": "ok", "mode": access.mode, "mineru_desktop": Path("/Applications/MinerU.app").exists(), "mineru_cli": bool(command and (shutil.which(command[0]) or Path(command[0]).is_file()))}
 
 
 @app.get("/api/settings")
@@ -108,7 +122,7 @@ def save_settings(body: SettingsBody):
         raise ValueError("接口地址需为有效的 HTTP(S) Base URL，不包含账号密码或查询参数。")
     if body.parser not in ("existing", "cli", "cloud"):
         raise ValueError("未知解析模式。")
-    if body.mineru_backend not in ("pipeline", "vlm-auto-engine", "hybrid-auto-engine", "vlm-http-client"):
+    if body.mineru_backend not in ("pipeline", "vlm-auto-engine", "hybrid-auto-engine", "vlm-http-client", "basic", "standard", "advanced", "flash"):
         raise ValueError("未知 MinerU backend。")
     values = body.model_dump(exclude_none=True)
     settings.save(values)
