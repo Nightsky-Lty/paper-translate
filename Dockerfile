@@ -24,7 +24,7 @@ RUN useradd --create-home --uid 1000 paper && \
 COPY --from=python-dependencies /app/.venv /app/.venv
 COPY --from=frontend /build/frontend/dist /app/frontend/dist
 COPY server/ /app/server/
-COPY scripts/create_access_password.py /app/scripts/create_access_password.py
+COPY scripts/create_access_password.py scripts/parse_mineru4.py /app/scripts/
 USER paper
 EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

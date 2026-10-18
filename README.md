@@ -10,7 +10,7 @@ PDF → MinerU 解析 → 段落、图片与坐标 → LLM 翻译 → 对照阅�
 
 - **四种阅读模式**：逐段中英对照、逐节中英对照、纯中文、英文原文；切换模式无需再次调用 LLM。
 - **原 PDF 对照**：点击段落定位并高亮 PDF，点击 PDF 内容框定位对应段落，支持可选的滚动联动。
-- **多种解析来源**：导入 MinerU 桌面端结果、上传结果 ZIP，或配置 MinerU 命令行 / Python 环境、云端 API 自动解析新 PDF。
+- **两种自动解析方式**：MinerU 4 Python API 和 MinerU 官方云端 API；也可直接导入已有解析结果。
 - **可配置翻译服务**：支持 OpenAI 兼容的接口地址、模型、API Key 和术语表。
 - **编辑与续传**：逐批保存译文，支持暂停、继续、单段重译和人工编辑；进行中的翻译不会覆盖较新的人工修改。
 - **便携导出**：导出 Markdown、JSON，或包含图片的完整 ZIP 包。
@@ -26,7 +26,7 @@ PDF → MinerU 解析 → 段落、图片与坐标 → LLM 翻译 → 对照阅�
 - [uv](https://docs.astral.sh/uv/)。
 - Node.js 20 或更高版本及 npm。
 
-MinerU 和翻译服务需按所选方式单独准备。仅导入已有解析结果时，无需安装 MinerU 命令行环境；使用外部翻译服务时，需要自行提供相应凭据。
+MinerU 和翻译服务需按所选方式单独准备。仅导入已有解析结果时，无需安装 MinerU Python 环境；使用外部服务时，需要自行提供相应凭据。
 
 ### 下载并启动
 
@@ -54,22 +54,20 @@ PAPER_TRANSLATE_NO_BROWSER=1 bash scripts/start.sh
 
 | 方式 | 需要准备 | 导入方法 |
 | --- | --- | --- |
-| 已有 MinerU 结果 | 原 PDF、content list JSON 和引用的图片 | 本机结果目录，或结果 ZIP |
-| MinerU 2.x CLI | 支持 `-p / -o / -b` 的可执行命令及所需模型 | 上传 PDF 后自动解析 |
-| MinerU 4 Python 环境 | MinerU 4、适配脚本及对应的模型 / 运行环境 | 上传 PDF 后自动解析 |
+| MinerU Python API | 安装 MinerU 4 的 Python 环境和所需模型 | 上传 PDF，在应用运行的机器上自动解析 |
 | MinerU 云端 API | MinerU API Token | 上传 PDF，提交云端解析并获取结果 |
 
-默认使用“已有 MinerU 结果”模式。“MinerU 论文库”默认扫描 `~/MinerU`，可在设置中修改。已有结果需要包含 `*_content_list.json`（V1）或 `*content_list_v2.json`（V2）、原 PDF，以及引用的 `images/`。ZIP 支持嵌套目录；原 PDF 可放在包内，也可单独配对上传。
+默认使用 Python API，在解析设置中填写已安装 MinerU 4 的 Python 解释器路径；使用云端解析时选择云端 API 并填写 Token。Python 模式使用本地模型，不需要 MinerU 官方云端 Token。
 
-桌面端对接采用结果文件导入，应用不会控制桌面端开始解析。自动解析通过命令行适配器或云端 API 完成。
+已有结果仍可独立导入，无需调用解析 API。“MinerU 论文库”默认扫描 `~/MinerU`，可在设置中修改。结果需要包含 `*_content_list.json`（V1）或 `*content_list_v2.json`（V2）、原 PDF，以及引用的 `images/`。ZIP 支持嵌套目录；原 PDF 可放在包内，也可单独配对上传。应用不会控制桌面端开始解析。
 
-使用 MinerU 4 时，将解析命令设为以下形式，并按安装位置替换路径：
+Python 解释器路径示例（按安装位置替换）：
 
 ```text
-/path/to/mineru-env/bin/python /path/to/paper-translate/scripts/parse_mineru4.py
+/path/to/mineru-env/bin/python
 ```
 
-选择与模型和硬件匹配的 Basic / Standard / Advanced / Flash。适配器调用完整文档解析 API，保存图片和中间 JSON，再生成项目使用的 V1 content list。解析任务按单篇串行执行，排队时也可暂停。Docker CPU Basic 环境的安装步骤见部署指南。
+选择与模型和硬件匹配的 Basic / Standard / Advanced / Flash。应用在独立进程中调用 MinerU 4 Python API，保存图片和中间 JSON，再生成项目使用的 V1 content list。解析任务按单篇串行执行，排队时也可暂停。Docker CPU Basic 环境的安装步骤见部署指南。
 
 ### 2. 配置翻译服务
 
@@ -109,7 +107,7 @@ PAPER_TRANSLATE_NO_BROWSER=1 bash scripts/start.sh
 
 本机运行时，论文、图片、译文、数据库和设置默认保存在项目的 `data/` 中；服务器 Docker 部署使用持久化数据卷。数据目录和凭据文件已加入 Git 忽略规则。
 
-LLM 请求包含待翻译文字、段落 ID、论文标题、章节上下文和术语表，不发送 PDF 文件、图片和坐标。选择 MinerU 云端 API 时，原 PDF 会上传到 MinerU；本地 CLI / Python 解析模式使用所配置的本地运行环境。
+LLM 请求包含待翻译文字、段落 ID、论文标题、章节上下文和术语表，不发送 PDF 文件、图片和坐标。选择 MinerU 云端 API 时，原 PDF 会上传到 MinerU；Python API 模式使用所配置的本地运行环境。
 
 API Key / MinerU Token 保存在权限为 `0600` 的设置文件中，未做应用层加密，不回传前端，也不放入导出包。可使用 `PAPER_TRANSLATE_API_KEY` 环境变量提供未在设置中保存的翻译凭据。
 
@@ -118,6 +116,7 @@ API Key / MinerU Token 保存在权限为 `0600` 的设置文件中，未做应�
 | `PAPER_TRANSLATE_DATA` | 修改应用数据目录 |
 | `PAPER_TRANSLATE_LIBRARY` | 修改默认的 MinerU 结果目录 |
 | `PAPER_TRANSLATE_API_KEY` | 为翻译服务提供 API Key |
+| `PAPER_TRANSLATE_MINERU_PYTHON` | 配置默认的 MinerU Python 解释器 |
 | `PAPER_TRANSLATE_NO_BROWSER` | 禁止启动脚本自动打开浏览器 |
 
 本机启动默认仅监听 `127.0.0.1`，并限制 Host 和跨站 Origin。服务器模式要求配置访问密码哈希和访问地址；公网域名访问使用 HTTPS。访问密码与 LLM API Key 是两组独立凭据，配置方法见部署指南。

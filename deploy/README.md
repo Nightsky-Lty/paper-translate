@@ -35,7 +35,7 @@ chmod 600 .env
 sudo docker compose -f compose.yaml build
 ```
 
-基础镜像默认限制为 1 GB 内存、1.5 核 CPU，不包含 MinerU CLI 或模型。它可以导入已有结果 ZIP，也可以在网页设置中配置 MinerU 云端解析。
+基础镜像默认限制为 1 GB 内存、1.5 核 CPU，不包含 MinerU Python 库或模型。它可以导入已有结果 ZIP，也可以在网页设置中配置 MinerU 云端解析。
 
 若需要服务器本地解析，继续下面的可选步骤；否则跳到“创建访问密码并启动”。
 
@@ -127,7 +127,7 @@ sudo systemctl reload caddy
 - **翻译服务**：填写 OpenAI 兼容的 Base URL、模型和 API Key，再进行短句连接测试。
 - **已有结果**：通过网页上传结果 ZIP；网页中的 MinerU 结果目录指服务器文件目录，不能读取浏览器所在电脑的文件夹。
 - **MinerU 云端**：选择云端解析并填写 Token，PDF 会上传到 MinerU。
-- **MinerU CPU 镜像**：选择“服务器 CLI”，将命令设为 `/opt/mineru/bin/python /app/scripts/parse_mineru4.py`，Backend 选择 `MinerU 4 · Basic（CPU）`。
+- **MinerU CPU 镜像**：选择“MinerU Python API”，Python 解释器使用 `/opt/mineru/bin/python`，解析档位选择 `MinerU 4 · Basic（CPU）`。扩展镜像已配置该解释器的默认值。
 
 访问密码保护整个网页，LLM API Key / MinerU Token 则用于外部服务，两者互相独立。服务凭据保存在服务器数据卷的设置文件中，不回传前端或打入镜像。
 
@@ -179,7 +179,9 @@ sudo docker compose up -d app
 
 不要使用 `docker compose down -v`，该参数会删除数据卷。使用本地 MinerU 时，模型卷可另行备份，或在恢复后重新下载模型。
 
-从本机迁移到服务器时，先停止本机应用并备份完整 `data/`，再恢复到服务器数据卷。文档路径会自动重定位；设置中的 MinerU 命令和结果目录需要按服务器环境调整。恢复时保留服务器已有的访问密码文件，避免替换登录凭据。
+从本机迁移到服务器时，先停止本机应用并备份完整 `data/`，再恢复到服务器数据卷。文档路径会自动重定位；设置中的 Python 解释器和结果目录需要按服务器环境调整。恢复时保留服务器已有的访问密码文件，避免替换登录凭据。
+
+早期版本保存的 MinerU 4 命令配置会自动读取为 Python 解释器路径及解析档位；重新保存设置后，旧字段会被移除。其他旧解析模式默认迁移为 Python API，需准备 MinerU 4 环境。
 
 ## 部署检查
 

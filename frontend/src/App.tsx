@@ -282,21 +282,15 @@ function SettingsDialog({
                 <div className="parser-options">
                   {[
                     {
-                      id: "existing",
-                      name: "已有 MinerU 结果",
-                      desc: "直接导入桌面版解析的论文，无需重新解析",
-                      icon: FolderOpen,
-                    },
-                    {
-                      id: "cli",
-                      name: isServer ? "服务器命令行" : "本地命令行",
+                      id: "python" as const,
+                      name: "MinerU Python API",
                       desc: isServer
-                        ? "调用服务器上的 MinerU CLI 解析新 PDF"
-                        : "调用本机 MinerU CLI 解析新 PDF",
+                        ? "使用服务器的 Python 环境和模型解析 PDF"
+                        : "使用本机的 Python 环境和模型解析 PDF",
                       icon: HardDrive,
                     },
                     {
-                      id: "cloud",
+                      id: "cloud" as const,
                       name: "MinerU 云端 API",
                       desc: "将 PDF 上传至 MinerU 解析，需要 Token",
                       icon: Globe2,
@@ -317,9 +311,7 @@ function SettingsDialog({
                   ))}
                 </div>
                 <label className="field-label" htmlFor="library-path">
-                  {isServer
-                    ? "服务器上的 MinerU 结果目录"
-                    : "MinerU 桌面版论文目录"}
+                  {isServer ? "已有结果导入目录（服务器）" : "已有结果导入目录"}
                 </label>
                 <input
                   id="library-path"
@@ -327,42 +319,41 @@ function SettingsDialog({
                   onChange={(e) => set("library_path", e.target.value)}
                 />
                 <p className="field-help">
-                  导入时复制解析结果，原目录中的文件保持不变。
+                  也可直接导入已有结果，无需调用解析
+                  API。导入时复制文件，保留原目录。
                 </p>
-                {values.parser === "cli" && (
+                {values.parser === "python" && (
                   <>
-                    <label className="field-label" htmlFor="mineru-command">
-                      MinerU 命令或可执行文件路径
+                    <label className="field-label" htmlFor="mineru-python">
+                      已安装 MinerU 4 的 Python 解释器
                     </label>
                     <input
-                      id="mineru-command"
-                      value={values.mineru_command}
-                      onChange={(e) => set("mineru_command", e.target.value)}
-                      placeholder="/path/to/env/bin/mineru"
+                      id="mineru-python"
+                      value={values.mineru_python}
+                      onChange={(e) => set("mineru_python", e.target.value)}
+                      placeholder="/path/to/mineru-env/bin/python"
                     />
-                    <label className="field-label" htmlFor="mineru-backend">
-                      Backend
+                    <label className="field-label" htmlFor="mineru-tier">
+                      解析档位
                     </label>
                     <select
-                      id="mineru-backend"
-                      value={values.mineru_backend}
-                      onChange={(e) => set("mineru_backend", e.target.value)}
+                      id="mineru-tier"
+                      value={values.mineru_tier}
+                      onChange={(e) =>
+                        set(
+                          "mineru_tier",
+                          e.target.value as Settings["mineru_tier"],
+                        )
+                      }
                     >
-                      <option value="pipeline">pipeline</option>
                       <option value="basic">MinerU 4 · Basic（CPU）</option>
                       <option value="standard">MinerU 4 · Standard</option>
                       <option value="advanced">MinerU 4 · Advanced</option>
                       <option value="flash">MinerU 4 · Flash</option>
-                      <option value="vlm-auto-engine">vlm-auto-engine</option>
-                      <option value="hybrid-auto-engine">
-                        hybrid-auto-engine
-                      </option>
-                      <option value="vlm-http-client">vlm-http-client</option>
                     </select>
                     <p className="field-help">
-                      MinerU 2.x 使用原生 CLI；MinerU 4 使用随项目提供的
-                      parse_mineru4.py 适配器。约 4 GB 内存的服务器建议使用
-                      Basic。
+                      调用 MinerU 4 Python API，在应用运行的机器上解析。 CPU
+                      环境可使用 Basic；其他档位需准备对应的模型和运行资源。
                     </p>
                   </>
                 )}
@@ -480,13 +471,13 @@ function ImportDialog({
   notify: (s: string, error?: boolean) => void;
 }) {
   const { isServer } = useRuntime();
-  const [tab, setTab] = useState(isServer ? "files" : "library");
+  const [tab, setTab] = useState("files");
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [pdf, setPdf] = useState<File | null>(null);
   const [archive, setArchive] = useState<File | null>(null);
-  const [parser, setParser] = useState("existing");
+  const [parser, setParser] = useState<Settings["parser"]>("python");
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   useDialog(true, () => {
@@ -714,13 +705,11 @@ function ImportDialog({
                 <span>
                   {archive
                     ? "ZIP 需包含 content_list JSON 和 images。原 PDF 可放在 ZIP 内，也可以单独选择。"
-                    : parser === "existing"
-                      ? "当前使用已有解析结果。仅导入 PDF 时，需先配置本地 CLI 或云端解析。"
-                      : parser === "cloud"
-                        ? "当前使用 MinerU 云端解析。导入后，PDF 将上传至 MinerU。"
-                        : isServer
-                          ? "当前使用服务器上的 MinerU CLI，导入后会在服务器解析。"
-                          : "当前使用本地 MinerU CLI，导入后会在本机解析。"}
+                    : parser === "cloud"
+                      ? "当前使用 MinerU 云端解析。导入后，PDF 将上传至 MinerU。"
+                      : isServer
+                        ? "当前使用 MinerU Python API，导入后会在服务器解析。"
+                        : "当前使用 MinerU Python API，导入后会在本机解析。"}
                 </span>
               </div>
             </>

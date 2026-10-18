@@ -91,9 +91,9 @@ def new_document(doc_id: str, title: str) -> dict:
 
 @app.get("/api/health")
 def health():
-    import shlex
-    command = shlex.split(settings.get()["mineru_command"])
-    return {"application": "paper-translate", "status": "ok", "mode": access.mode, "mineru_desktop": Path("/Applications/MinerU.app").exists(), "mineru_cli": bool(command and (shutil.which(command[0]) or Path(command[0]).is_file()))}
+    runtime = mineru.python_runtime(settings.get()["mineru_python"])
+    return {"application": "paper-translate", "status": "ok", "mode": access.mode,
+            "mineru_python": runtime["available"], "mineru_version": runtime["version"]}
 
 
 @app.get("/api/settings")
@@ -108,9 +108,9 @@ class SettingsBody(BaseModel):
     json_mode: bool = True
     batch_chars: int = Field(default=5500, ge=500, le=15000)
     glossary: str = Field(default="", max_length=30000)
-    parser: str = "existing"
-    mineru_command: str = Field(default="mineru", max_length=2000)
-    mineru_backend: str = "pipeline"
+    parser: str = "python"
+    mineru_python: str = Field(default=settings.get()["mineru_python"], min_length=1, max_length=2000)
+    mineru_tier: str = "basic"
     mineru_token: str | None = Field(default=None, max_length=4000)
     library_path: str = Field(default=str(Path.home() / "MinerU"), max_length=2000)
 
@@ -120,10 +120,10 @@ def save_settings(body: SettingsBody):
     url = urlparse(body.base_url)
     if url.scheme not in ("http", "https") or not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError("接口地址需为有效的 HTTP(S) Base URL，不包含账号密码或查询参数。")
-    if body.parser not in ("existing", "cli", "cloud"):
+    if body.parser not in ("python", "cloud"):
         raise ValueError("未知解析模式。")
-    if body.mineru_backend not in ("pipeline", "vlm-auto-engine", "hybrid-auto-engine", "vlm-http-client", "basic", "standard", "advanced", "flash"):
-        raise ValueError("未知 MinerU backend。")
+    if body.mineru_tier not in ("basic", "standard", "advanced", "flash"):
+        raise ValueError("未知 MinerU 解析档位。")
     values = body.model_dump(exclude_none=True)
     settings.save(values)
     return settings.public()
@@ -195,8 +195,14 @@ async def save_upload(upload: UploadFile, target: Path, limit: int):
 async def import_files(pdf: UploadFile | None = File(default=None), archive: UploadFile | None = File(default=None)):
     if not pdf and not archive:
         raise ValueError("请选择 PDF 或 MinerU 结果 ZIP。")
-    if not archive and settings.get()["parser"] == "existing":
-        raise ValueError("只有 PDF 时需要解析器。请先选择本地 CLI / 云端解析，或同时导入 MinerU 结果 ZIP。")
+    if not archive:
+        config = settings.get()
+        if config["parser"] == "python":
+            runtime = await asyncio.to_thread(mineru.python_runtime, config["mineru_python"])
+            if not runtime["available"]:
+                raise ValueError("Python 解析器尚未就绪，请配置已安装 MinerU 4 的 Python 环境、选择云端 API，或导入已有结果 ZIP。")
+        if config["parser"] == "cloud" and not config["mineru_token"]:
+            raise ValueError("请先填写 MinerU 云端 API Token，或导入已有结果 ZIP。")
     doc_id = uuid.uuid4().hex
     directory = store.root / "documents" / doc_id
     directory.mkdir(parents=True)

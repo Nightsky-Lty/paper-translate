@@ -5,8 +5,8 @@ RUN pip install --no-cache-dir --index-url "$PYTHON_INDEX_URL" uv==0.7.6 && \
     uv venv --python /usr/local/bin/python /opt/mineru && \
     uv pip install --python /opt/mineru/bin/python --index-url "$PYTHON_INDEX_URL" 'mineru==4.0.12' && \
     uv pip freeze --python /opt/mineru/bin/python > /opt/mineru/installed-requirements.txt
-COPY scripts/parse_mineru4.py /app/scripts/parse_mineru4.py
-ENV MINERU_HOME=/app/mineru MINERU_MODEL_SOURCE=local \
+ENV PAPER_TRANSLATE_MINERU_PYTHON=/opt/mineru/bin/python \
+    MINERU_HOME=/app/mineru MINERU_MODEL_SOURCE=local \
     MINERU_MODEL_SMALL_BACKEND=onnx MINERU_TABLE_DEVICE=cpu \
     MINERU_PROCESSING_WINDOW_SIZE=1 MINERU_PDF_RENDER_THREADS=1 \
     MINERU_MALLOC_TRIM=1 OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 \

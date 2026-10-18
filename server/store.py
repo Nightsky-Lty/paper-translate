@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -96,9 +98,9 @@ DEFAULT_SETTINGS = {
     "json_mode": True,
     "batch_chars": 5500,
     "glossary": "Large Language Model = 大语言模型\nagent = 智能体",
-    "mineru_command": "mineru",
-    "mineru_backend": "pipeline",
-    "parser": "existing",
+    "mineru_python": os.environ.get("PAPER_TRANSLATE_MINERU_PYTHON", sys.executable),
+    "mineru_tier": "basic",
+    "parser": "python",
     "mineru_token": "",
     "library_path": os.environ.get("PAPER_TRANSLATE_LIBRARY", str(Path.home() / "MinerU")),
 }
@@ -111,7 +113,20 @@ class Settings:
     def get(self) -> dict:
         values = dict(DEFAULT_SETTINGS)
         if self.path.exists():
-            values.update(json.loads(self.path.read_text()))
+            saved = json.loads(self.path.read_text())
+            # Read old settings once through the new contract; never execute legacy CLI commands.
+            if saved.get("parser") in ("cli", "existing"):
+                saved["parser"] = "python"
+            if "mineru_python" not in saved and saved.get("mineru_command"):
+                try:
+                    command = shlex.split(saved["mineru_command"])
+                except ValueError:
+                    command = []
+                if command and Path(command[0]).name.startswith("python") and any(Path(p).name == "parse_mineru4.py" for p in command[1:]):
+                    saved["mineru_python"] = command[0]
+            if "mineru_tier" not in saved and saved.get("mineru_backend") in ("basic", "standard", "advanced", "flash"):
+                saved["mineru_tier"] = saved["mineru_backend"]
+            values.update({k: v for k, v in saved.items() if k in DEFAULT_SETTINGS})
         values["api_key"] = values["api_key"] or os.environ.get("PAPER_TRANSLATE_API_KEY", "")
         return values
 

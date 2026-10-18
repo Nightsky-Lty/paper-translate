@@ -4,7 +4,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from .mineru import build_document, run_cli, run_cloud
+from .mineru import build_document, run_python, run_cloud
 from .store import Settings, Store, now
 from .translation import batches, translate_batch
 
@@ -79,10 +79,10 @@ class Jobs:
         output.mkdir(parents=True, exist_ok=True)
         if settings["parser"] == "cloud":
             run_cloud(Path(doc["pdf_path"]), output, settings, event.is_set)
-        elif settings["parser"] == "cli":
-            run_cli(Path(doc["pdf_path"]), output, settings, event.is_set)
+        elif settings["parser"] == "python":
+            run_python(Path(doc["pdf_path"]), output, settings, event.is_set)
         else:
-            raise ValueError("当前模式为导入已有结果。新 PDF 请在设置中启用本地 CLI 或 MinerU 云端解析。")
+            raise ValueError("请在设置中选择 MinerU Python API 或 MinerU 云端 API。")
         if event.is_set():
             return
         parsed = build_document(output, doc_id, Path(doc["pdf_path"]))

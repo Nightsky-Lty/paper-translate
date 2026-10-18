@@ -37,9 +37,9 @@ export type Settings = {
   json_mode: boolean;
   batch_chars: number;
   glossary: string;
-  parser: string;
-  mineru_command: string;
-  mineru_backend: string;
+  parser: "python" | "cloud";
+  mineru_python: string;
+  mineru_tier: "basic" | "standard" | "advanced" | "flash";
   mineru_token?: string;
   mineru_token_set: boolean;
   library_path: string;

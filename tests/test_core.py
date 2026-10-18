@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import os
+import shutil
 import tempfile
 import threading
 import time
@@ -238,9 +239,49 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/settings",headers={"Host":"untrusted.example"}).status_code,403)
 
     def test_pdf_requires_parser_or_results(self):
-        response = self.client.post("/api/import/files",files={"pdf":("test.pdf",(self.source/"paper_origin.pdf").read_bytes(),"application/pdf")})
+        with patch("server.mineru.python_runtime", return_value={"available":False,"version":None}):
+            response = self.client.post("/api/import/files",files={"pdf":("test.pdf",(self.source/"paper_origin.pdf").read_bytes(),"application/pdf")})
         self.assertEqual(response.status_code,400)
         self.assertIn("解析器",response.json()["detail"])
+
+    def test_settings_only_accept_python_and_cloud(self):
+        values = self.settings.public()
+        self.assertNotIn("mineru_command", values)
+        self.assertNotIn("mineru_backend", values)
+        for parser in ("cli", "existing", "unsupported"):
+            response = self.client.put("/api/settings", json={**values, "parser":parser})
+            self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.client.put("/api/settings", json={**values, "mineru_tier":"pipeline"}).status_code, 400)
+        for parser in ("python", "cloud"):
+            self.assertEqual(self.client.put("/api/settings", json={**values, "parser":parser}).status_code, 200)
+
+    def test_pdf_parsing_dispatches_to_both_apis_and_preserves_geometry(self):
+        def parsed(pdf, output, settings, cancelled):
+            shutil.copytree(self.source, output, dirs_exist_ok=True)
+        for mode in ("python", "cloud"):
+            self.settings.save({"parser":mode, "mineru_token":"test-token"})
+            with patch("server.mineru.python_runtime", return_value={"available":True,"version":"4.0.12"}), \
+                 patch("server.jobs.run_python", side_effect=parsed) as python, \
+                 patch("server.jobs.run_cloud", side_effect=parsed) as cloud:
+                response = self.client.post("/api/import/files", files={"pdf":("paper.pdf",(self.source/"paper_origin.pdf").read_bytes(),"application/pdf")})
+                self.assertEqual(response.status_code, 200, response.text)
+                doc_id = response.json()["id"]
+                for _ in range(100):
+                    if self.store.get(doc_id)["job"]["state"] not in ("running", "stopping"):
+                        break
+                    time.sleep(.01)
+                doc = self.store.get(doc_id)
+                self.assertEqual(doc["job"]["state"], "done", doc["job"])
+                self.assertEqual(doc["blocks"][1]["source_locations"][0]["bbox"], [.1,.2,.9,.35])
+                self.assertEqual(python.call_count, int(mode=="python"))
+                self.assertEqual(cloud.call_count, int(mode=="cloud"))
+
+    def test_cloud_upload_requires_token_before_saving_document(self):
+        self.settings.save({"parser":"cloud", "mineru_token":""})
+        response = self.client.post("/api/import/files", files={"pdf":("paper.pdf",(self.source/"paper_origin.pdf").read_bytes(),"application/pdf")})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Token", response.json()["detail"])
+        self.assertEqual(self.store.all(), [])
 
     def test_zip_import_with_pdf(self):
         buffer=io.BytesIO()

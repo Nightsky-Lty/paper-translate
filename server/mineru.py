@@ -5,7 +5,6 @@ import json
 import math
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import time
@@ -190,12 +189,37 @@ def safe_extract(source: Path, destination: Path):
         z.extractall(destination)
 
 
-def run_cli(pdf: Path, output: Path, settings: dict, cancelled: Callable[[], bool]):
-    command = shlex.split(settings["mineru_command"])
-    if not command or not (shutil.which(command[0]) or Path(command[0]).is_file()):
-        raise ValueError("未找到 MinerU 命令行。当前安装的是桌面版，可在导入窗口使用「MinerU 论文库」，或在设置中配置 CLI 路径 / 云端解析。")
-    args = command + ["-p", str(pdf), "-o", str(output), "-b", settings["mineru_backend"]]
-    # No shell: paths and configurable arguments cannot become shell commands.
+def python_executable(value: str) -> str:
+    executable = str(Path(value).expanduser())
+    if not value.strip() or not (shutil.which(executable) or Path(executable).is_file()):
+        raise ValueError("未找到 Python 解释器，请在解析设置中填写已安装 MinerU 4 的 Python 可执行文件。")
+    return executable
+
+
+def python_runtime(value: str) -> dict:
+    try:
+        executable = python_executable(value)
+        result = subprocess.run([executable, "-c", "from importlib.metadata import version; print(version('mineru'))"],
+                                capture_output=True, text=True, timeout=5, check=True)
+        version = result.stdout.strip()
+        return {"available": version.startswith("4."), "version": version or None}
+    except (ValueError, OSError, subprocess.SubprocessError):
+        return {"available": False, "version": None}
+
+
+def run_python(pdf: Path, output: Path, settings: dict, cancelled: Callable[[], bool]):
+    if cancelled():
+        return
+    executable = python_executable(settings["mineru_python"])
+    if settings["mineru_tier"] not in ("basic", "standard", "advanced", "flash"):
+        raise ValueError("未知 MinerU 解析档位。")
+    if not python_runtime(executable)["available"]:
+        raise ValueError("该 Python 环境尚未安装受支持的 MinerU 4，请安装 MinerU 4 或切换到云端 API。")
+    if cancelled():
+        return
+    worker = Path(__file__).resolve().parent.parent / "scripts" / "parse_mineru4.py"
+    args = [executable, str(worker), "--pdf", str(pdf), "--output", str(output), "--tier", settings["mineru_tier"]]
+    # A dedicated process keeps model dependencies isolated and permits cancellation.
     log = output.parent / "mineru.log"
     with log.open("w") as handle:
         process = subprocess.Popen(args, stdout=handle, stderr=subprocess.STDOUT, start_new_session=True)
@@ -212,7 +236,7 @@ def run_cli(pdf: Path, output: Path, settings: dict, cancelled: Callable[[], boo
                 raise ValueError("解析已取消或超时。")
             time.sleep(0.5)
         if process.returncode:
-            raise ValueError("MinerU 解析失败，请查看文档目录下的 mineru.log。")
+            raise ValueError("MinerU Python API 解析失败，请查看文档目录下的 mineru.log。")
 
 
 def run_cloud(pdf: Path, output: Path, settings: dict, cancelled: Callable[[], bool]):
