@@ -121,7 +121,7 @@ API Key / MinerU Token 保存在权限为 `0600` 的设置文件中，未做应�
 
 本机启动默认仅监听 `127.0.0.1`，并限制 Host 和跨站 Origin。服务器模式要求配置访问密码哈希和访问地址；公网域名访问使用 HTTPS。访问密码与 LLM API Key 是两组独立凭据，配置方法见部署指南。
 
-## 开发与验证
+## 开发与构建
 
 后端开发（在项目根目录）：
 
@@ -140,14 +140,11 @@ npm run dev
 
 打开 **http://127.0.0.1:5173**，Vite 会将 `/api` 请求转发到后端。
 
-运行验证（在项目根目录）：
+构建前端（在项目根目录）：
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
 npm --prefix frontend run build
 ```
-
-测试使用临时 PDF / JSON 和模拟的翻译响应，不调用付费服务。覆盖内容包括几何映射、导入与导出、凭据过滤、翻译协议、暂停续传、并发编辑保护、服务器访问控制和数据路径迁移。
 
 ## 项目结构
 
@@ -156,5 +153,4 @@ server/          FastAPI 后端、MinerU 适配、翻译任务和数据存储
 frontend/src/    React 阅读器、PDF 定位、设置与论文库界面
 scripts/         本机启动、MinerU 4 适配、SSH 连接和密码管理
 deploy/          服务器部署指南与 Caddy 配置示例
-tests/           核心功能与服务器部署测试
 ```

@@ -12,3 +12,11 @@ frontend/dist
 deploy/secrets
 *.log
 .DS_Store
+tests
+.pytest_cache
+.coverage
+.coverage.*
+htmlcov
+coverage
+test-results
+playwright-report

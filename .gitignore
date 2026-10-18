@@ -14,3 +14,11 @@ frontend/dist/
 *.log
 deploy/secrets/
 *.command
+tests/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+test-results/
+playwright-report/
