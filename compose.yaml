@@ -6,9 +6,6 @@ services:
     restart: unless-stopped
     environment:
       PAPER_TRANSLATE_MODE: server
-      PAPER_TRANSLATE_PUBLIC_URL: ${PAPER_TRANSLATE_PUBLIC_URL:?Set PAPER_TRANSLATE_PUBLIC_URL in .env}
-      PAPER_TRANSLATE_ACCESS_USER: ${PAPER_TRANSLATE_ACCESS_USER:-reader}
-      PAPER_TRANSLATE_PASSWORD_HASH_FILE: /app/data/access-password.hash
     ports:
       - "127.0.0.1:8765:8765"
     volumes:

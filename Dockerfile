@@ -24,10 +24,10 @@ RUN useradd --create-home --uid 1000 paper && \
 COPY --from=python-dependencies /app/.venv /app/.venv
 COPY --from=frontend /build/frontend/dist /app/frontend/dist
 COPY server/ /app/server/
-COPY scripts/create_access_password.py scripts/parse_mineru4.py /app/scripts/
+COPY scripts/parse_mineru4.py /app/scripts/
 USER paper
 EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=3).read()"]
-# The port is published to host loopback only; Caddy is the sole public entrypoint.
-CMD ["/app/.venv/bin/python", "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8765", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# The port is published to host loopback only and accessed through an SSH tunnel.
+CMD ["/app/.venv/bin/python", "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8765", "--workers", "1", "--no-proxy-headers"]

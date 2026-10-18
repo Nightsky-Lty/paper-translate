@@ -47,12 +47,6 @@ app = FastAPI(title="纸间 · Paper Translate", lifespan=lifespan)
 async def access_control(request: Request, call_next):
     if not access.allowed(request.headers.get("host", ""), request.headers.get("origin")):
         return JSONResponse({"detail": "不允许此访问地址或跨站来源。"}, status_code=403)
-    if request.url.path != "/healthz" and access.mode == "server":
-        authorized = await asyncio.to_thread(access.authenticate, request.headers.get("authorization", ""))
-        if not authorized:
-            return JSONResponse({"detail": "请使用访问账号和密码登录。"}, status_code=401,
-                                headers={"WWW-Authenticate": 'Basic realm="Paper Translate", charset="UTF-8"',
-                                         "Cache-Control": "no-store"})
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"

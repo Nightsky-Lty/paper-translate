@@ -14,7 +14,7 @@ PDF → MinerU 解析 → 段落、图片与坐标 → LLM 翻译 → 对照阅�
 - **可配置翻译服务**：支持 OpenAI 兼容的接口地址、模型、API Key 和术语表。
 - **编辑与续传**：逐批保存译文，支持暂停、继续、单段重译和人工编辑；进行中的翻译不会覆盖较新的人工修改。
 - **便携导出**：导出 Markdown、JSON，或包含图片的完整 ZIP 包。
-- **服务器部署**：提供 Docker 配置、访问密码保护，以及 HTTPS / SSH 隧道访问方案。
+- **服务器部署**：提供 Docker 配置和 SSH 隧道访问，打开网页即可使用，无需网页登录。
 
 ## 快速开始
 
@@ -119,7 +119,7 @@ API Key / MinerU Token 保存在权限为 `0600` 的设置文件中，未做应�
 | `PAPER_TRANSLATE_MINERU_PYTHON` | 配置默认的 MinerU Python 解释器 |
 | `PAPER_TRANSLATE_NO_BROWSER` | 禁止启动脚本自动打开浏览器 |
 
-本机启动默认仅监听 `127.0.0.1`，并限制 Host 和跨站 Origin。服务器模式要求配置访问密码哈希和访问地址；公网域名访问使用 HTTPS。访问密码与 LLM API Key 是两组独立凭据，配置方法见部署指南。
+本机启动和 Docker 端口发布默认仅绑定 `127.0.0.1`，并限制 Host 和跨站 Origin。服务器通过 SSH 隧道访问，身份验证由 SSH 完成，网页不要求账号密码。项目当前仅面向本机和 SSH 私有访问，不提供公网部署方案，配置方法见部署指南。
 
 ## 开发与构建
 
@@ -151,6 +151,6 @@ npm --prefix frontend run build
 ```text
 server/          FastAPI 后端、MinerU 适配、翻译任务和数据存储
 frontend/src/    React 阅读器、PDF 定位、设置与论文库界面
-scripts/         本机启动、MinerU 4 适配、SSH 连接和密码管理
-deploy/          服务器部署指南与 Caddy 配置示例
+scripts/         本机启动、MinerU 4 适配和 SSH 连接
+deploy/          服务器部署指南
 ```
