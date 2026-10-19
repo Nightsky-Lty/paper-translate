@@ -66,10 +66,10 @@ export default function PdfViewer({
   }, [paper.id, paper.pdf_url]);
 
   useEffect(() => {
-    const element = container.current;
+    const element = scroll.current;
     if (!element) return;
     const observer = new ResizeObserver((entries) =>
-      setWidth(Math.max(180, entries[0].contentRect.width - 44)),
+      setWidth(Math.max(1, entries[0].contentRect.width)),
     );
     observer.observe(element);
     return () => observer.disconnect();

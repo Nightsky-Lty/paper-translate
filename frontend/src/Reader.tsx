@@ -20,6 +20,8 @@ import {
   List,
   Check,
   AlertCircle,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -106,8 +108,11 @@ export default function Reader({
 }) {
   const [mode, setMode] = useState<Mode>(() => {
     const saved = localStorage.getItem("paper-mode");
-    return MODES.some((m) => m.id === saved) ? (saved as Mode) : "paragraph";
+    return MODES.some((m) => m.id === saved) ? (saved as Mode) : "zh";
   });
+  const [focused, setFocused] = useState(
+    () => localStorage.getItem("paper-focus") !== "false",
+  );
   const { storageLabel } = useRuntime();
   const [showPdf, setShowPdf] = useState(true);
   const [selected, setSelected] = useState("");
@@ -125,6 +130,8 @@ export default function Reader({
   const content = useRef<HTMLDivElement>(null);
   const source = useRef<"pdf" | "reader">("reader");
   const exportMenu = useRef<HTMLDivElement>(null);
+  const enterFocus = useRef<HTMLButtonElement>(null);
+  const exitFocus = useRef<HTMLButtonElement>(null);
   const headingBlocks = paper.blocks.filter((b) => b.type === "heading");
   const running = active(paper);
   const percent = paper.total
@@ -142,6 +149,33 @@ export default function Reader({
     }
     return groups;
   }, [paper.blocks]);
+
+  const changeFocus = (next: boolean) => {
+    setMenu("");
+    setToc(false);
+    setFocused(next);
+    requestAnimationFrame(() => {
+      (next ? exitFocus : enterFocus).current?.focus();
+    });
+  };
+  useEffect(() => {
+    localStorage.setItem("paper-focus", String(focused));
+  }, [focused]);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        document.querySelector('[role="dialog"]')
+      )
+        return;
+      if (menu) setMenu("");
+      else if (toc) setToc(false);
+      else if (focused) changeFocus(false);
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [focused, menu, toc]);
 
   useEffect(() => {
     localStorage.setItem("paper-mode", mode);
@@ -344,7 +378,24 @@ export default function Reader({
   };
 
   return (
-    <div className="reader">
+    <div className={`reader ${focused ? "reader-focused" : ""}`}>
+      {focused && (
+        <button
+          ref={exitFocus}
+          className="focus-restore"
+          onClick={() => changeFocus(false)}
+          title="显示工具栏与目录入口（Esc）"
+          aria-keyshortcuts="Escape"
+        >
+          {running ? (
+            <LoaderCircle size={14} className="spin" />
+          ) : (
+            <Minimize2 size={14} />
+          )}
+          显示工具栏
+          <kbd>Esc</kbd>
+        </button>
+      )}
       <header className="reader-topbar">
         <div className="reader-breadcrumb">
           <button
@@ -358,21 +409,42 @@ export default function Reader({
           <span className="breadcrumb-slash">/</span>
           <strong title={paper.title}>{paper.title}</strong>
         </div>
-        <button className="icon-button" title="设置" onClick={onSettings}>
-          <Settings2 size={17} />
-        </button>
+        <div className="reader-header-actions">
+          <button
+            ref={enterFocus}
+            className="button subtle"
+            aria-label="专注阅读"
+            title="收起工具栏，专注阅读论文"
+            onClick={() => changeFocus(true)}
+          >
+            <Maximize2 size={15} />
+            <span>专注阅读</span>
+          </button>
+          <button
+            className="icon-button"
+            aria-label="应用设置"
+            onClick={onSettings}
+          >
+            <Settings2 size={17} />
+          </button>
+        </div>
       </header>
       <div className="reader-toolbar">
         <div className="toolbar-left">
           <button
             className={`icon-button toc-trigger ${toc ? "on" : ""}`}
             title="论文目录"
+            aria-label="论文目录"
+            aria-expanded={toc}
+            aria-controls="reader-outline"
             onClick={() => setToc(!toc)}
           >
             <List size={18} />
           </button>
           <button
             className={`button subtle ${showPdf ? "on" : ""}`}
+            aria-label="显示原 PDF"
+            aria-pressed={showPdf}
             onClick={() => setShowPdf(!showPdf)}
           >
             {showPdf ? (
@@ -483,10 +555,25 @@ export default function Reader({
         </div>
       )}
       <div className="reader-workspace">
-        <aside className={`outline ${toc ? "mobile-open" : ""}`}>
+        {toc && (
+          <button
+            className="outline-backdrop"
+            aria-label="关闭论文目录"
+            onClick={() => setToc(false)}
+          />
+        )}
+        <aside
+          id="reader-outline"
+          aria-label="论文目录"
+          className={`outline ${toc ? "mobile-open" : ""}`}
+        >
           <div className="outline-title">
             论文目录
-            <button className="icon-button" onClick={() => setToc(false)}>
+            <button
+              className="icon-button"
+              aria-label="关闭目录"
+              onClick={() => setToc(false)}
+            >
               <X size={14} />
             </button>
           </div>
