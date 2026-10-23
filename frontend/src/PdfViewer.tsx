@@ -15,20 +15,22 @@ import {
   type RenderTask,
 } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import type { Paper, Block } from "./types";
+import type { Paper, Block, Location } from "./types";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
 export default function PdfViewer({
   paper,
   selected,
+  focusLocation,
   onSelect,
   page,
   setPage,
 }: {
   paper: Paper;
   selected: string;
-  onSelect: (b: Block) => void;
+  focusLocation: Location | null;
+  onSelect: (b: Block, location: Location) => void;
   page: number;
   setPage: (page: number) => void;
 }) {
@@ -120,9 +122,14 @@ export default function PdfViewer({
   }, [page]);
   useEffect(() => {
     const block = paper.blocks.find((b) => b.id === selected);
-    const location = block?.source_locations.find(
-      (loc) => loc.page_index === page,
+    const target = block?.source_locations.find(
+      (loc) =>
+        loc.page_index === page &&
+        loc.page_index === focusLocation?.page_index &&
+        loc.bbox.every((value, i) => value === focusLocation.bbox[i]),
     );
+    const location =
+      target || block?.source_locations.find((loc) => loc.page_index === page);
     if (location && scroll.current) {
       const top = location.bbox[1] * width * zoom * ratio;
       scroll.current.scrollTo({
@@ -130,7 +137,7 @@ export default function PdfViewer({
         behavior: "smooth",
       });
     }
-  }, [selected, page, ratio, width, zoom]);
+  }, [selected, focusLocation, page, ratio, width, zoom]);
 
   const pageCount = pdf?.numPages || paper.pages.length;
   const changePage = (value: number) => {
@@ -176,7 +183,7 @@ export default function PdfViewer({
                       width: (loc.bbox[2] - loc.bbox[0]) * 100 + "%",
                       height: (loc.bbox[3] - loc.bbox[1]) * 100 + "%",
                     }}
-                    onClick={() => onSelect(block)}
+                    onClick={() => onSelect(block, loc)}
                     title={block.original.slice(0, 120) || "图表"}
                   />
                 )),

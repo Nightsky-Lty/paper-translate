@@ -99,7 +99,11 @@ class Jobs:
             revisions = {b["id"]: b["revision"] for b in chunk}
             section = next((b["original"] for b in doc["blocks"] if b["id"] == chunk[0]["section_id"]), "")
             first_index = next(i for i, b in enumerate(doc["blocks"]) if b["id"] == chunk[0]["id"])
-            context = f"Paper: {doc['title']}\nSection: {section}\nPrevious paragraph: " + (doc["blocks"][first_index - 1]["original"] if first_index else "")
+            last_index = next(i for i, b in enumerate(doc["blocks"]) if b["id"] == chunk[-1]["id"])
+            previous = doc["blocks"][first_index - 1]["original"] if first_index else ""
+            following = doc["blocks"][last_index + 1]["original"] if last_index + 1 < len(doc["blocks"]) else ""
+            context = (f"Paper: {doc['title'][:300]}\nSection: {section[:250]}\n"
+                       f"Previous paragraph: {previous[-800:]}\nNext paragraph: {following[:800]}")
             self.store.update(doc_id, lambda d: d["job"].update(message=f"正在翻译第 {index + 1} / {len(chunks)} 批…"))
             result = translate_batch(chunk, settings, context, event.is_set)
             def save(d):

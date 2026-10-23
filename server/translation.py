@@ -21,6 +21,8 @@ Use the supplied glossary consistently. Keep all ⟦KEEP_N⟧ placeholders exact
 where appropriate; do not change them. Preserve Markdown formatting.
 Return only a JSON object: {"translations":[{"id":"...","text":"..."}]}.
 Return exactly the requested IDs, once each. Context is for reference, not output.
+Each supplied block is a logical paragraph and may span PDF pages or columns.
+Translate it continuously; never invent a paragraph break at a layout boundary.
 Never generate page numbers, coordinates, metadata, or new IDs."""
 
 

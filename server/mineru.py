@@ -15,6 +15,8 @@ from typing import Callable
 import httpx
 from pypdf import PdfReader
 
+from .paragraphs import merge_layout_breaks
+
 SKIP = {"header", "footer", "page_number", "page_header", "page_footer", "aside_text"}
 
 
@@ -85,6 +87,8 @@ def normalize_item(item: dict, page: int) -> dict:
         text = flatten(text if text is not None else payload)
         if kind == "title" or level:
             kind = "heading"
+        elif kind in ("page_footnote", "footnote"):
+            kind = "footnote"
         elif kind not in SKIP:
             kind = "paragraph"
     return {
@@ -159,7 +163,7 @@ def build_document(directory: Path, doc_id: str, pdf: Path | None = None) -> dic
         })
     if not normalized:
         raise ValueError("解析结果没有可展示的内容。")
-    return {"title": title, "blocks": normalized, "pages": pages, "pdf_path": str(pdf.resolve()), "asset_root": asset_root}
+    return {"title": title, "blocks": merge_layout_breaks(normalized), "pages": pages, "pdf_path": str(pdf.resolve()), "asset_root": asset_root}
 
 
 def discover(root: Path) -> list[dict]:

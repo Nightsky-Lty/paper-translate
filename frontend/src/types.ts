@@ -15,6 +15,8 @@ export type Block = {
   translatable: boolean;
   status: string;
   revision: number;
+  source_parts?: Block[];
+  merge_method?: "manual" | "layout";
 };
 export type Paper = {
   id: string;

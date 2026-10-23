@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import uuid
+from copy import deepcopy
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
@@ -19,6 +20,7 @@ from . import mineru
 from .access import AccessPolicy
 from .exporter import export_zip, markdown, portable_document
 from .jobs import Jobs
+from .paragraphs import merge_pair, split_paragraph
 from .store import Settings, Store, now, summary
 from .translation import translate_batch
 
@@ -284,6 +286,61 @@ def pause(doc_id: str):
 class EditBody(BaseModel):
     translation: str = Field(max_length=100000)
     revision: int
+
+
+class MergeBody(BaseModel):
+    revision: int
+    next_block_id: str
+    next_revision: int
+
+
+class SplitBody(BaseModel):
+    revision: int
+
+
+def structure_change(doc_id: str, change):
+    # Serialize with job submission as well as the document write transaction.
+    # No task may retain an obsolete list of paragraph IDs while it is changed.
+    with jobs.lock:
+        def update(doc):
+            if doc_id in jobs.events or doc.get("job", {}).get("state") in ("running", "stopping"):
+                raise ValueError("请先暂停任务并等待停止，再调整段落结构。")
+            change(doc)
+            doc["job"] = {"state": "idle", "kind": "translate", "message": "段落结构已更新。"}
+        return doc_response(store.update(doc_id, update))
+
+
+@app.post("/api/documents/{doc_id}/blocks/{block_id}/merge-next")
+def merge_next(doc_id: str, block_id: str, body: MergeBody):
+    def change(doc):
+        index = next((i for i, b in enumerate(doc["blocks"]) if b["id"] == block_id), None)
+        if index is None:
+            raise KeyError(block_id)
+        if index + 1 >= len(doc["blocks"]):
+            raise ValueError("该段落后没有相邻正文。")
+        left, right = doc["blocks"][index:index + 2]
+        if (left["revision"] != body.revision or right["id"] != body.next_block_id
+                or right["revision"] != body.next_revision):
+            raise HTTPException(409, "段落已更新，请刷新后重新确认合并。")
+        merged = merge_pair(left, right)
+        doc.setdefault("paragraph_history", []).append({"operation": "merge", "at": now(), "blocks": deepcopy([left, right])})
+        doc["blocks"][index:index + 2] = [merged]
+    return structure_change(doc_id, change)
+
+
+@app.post("/api/documents/{doc_id}/blocks/{block_id}/split")
+def split(doc_id: str, block_id: str, body: SplitBody):
+    def change(doc):
+        index = next((i for i, b in enumerate(doc["blocks"]) if b["id"] == block_id), None)
+        if index is None:
+            raise KeyError(block_id)
+        block = doc["blocks"][index]
+        if block["revision"] != body.revision:
+            raise HTTPException(409, "段落已更新，请刷新后重新确认拆分。")
+        parts = split_paragraph(block)
+        doc.setdefault("paragraph_history", []).append({"operation": "split", "at": now(), "blocks": deepcopy([block])})
+        doc["blocks"][index:index + 1] = parts
+    return structure_change(doc_id, change)
 
 
 @app.patch("/api/documents/{doc_id}/blocks/{block_id}")

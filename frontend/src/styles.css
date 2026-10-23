@@ -2005,6 +2005,49 @@ small {
   color: #9bb284;
   margin-right: 6px;
 }
+.paragraph-locations {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  margin-top: 10px;
+  font-family: inherit;
+  font-size: 10px;
+  color: #819276;
+}
+.paragraph-locations button {
+  padding: 3px 6px;
+  background: #edf3e8;
+  border-radius: 4px;
+  color: #506b43;
+}
+.paragraph-modal {
+  width: 700px;
+}
+.paragraph-preview {
+  overflow: auto;
+  padding: 0 26px 24px;
+}
+.paragraph-preview .info-note {
+  margin-bottom: 18px;
+}
+.paragraph-fragment {
+  padding: 16px;
+  background: #f5f8f0;
+  border-radius: 6px;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+  font-family: Georgia, var(--serif);
+  font-size: 13px;
+  line-height: 1.9;
+}
+.paragraph-fragment small {
+  display: block;
+  color: #819276;
+  font-family: inherit;
+  font-size: 10px;
+  margin-bottom: 8px;
+}
 .table-scroll {
   max-width: 100%;
   overflow: auto;
@@ -2671,7 +2714,7 @@ small {
   margin-top: 0;
 }
 .paper-block:has(.untranslated) .untranslated {
-  padding-right: 75px;
+  padding-right: 140px;
 }
 .paper-block:has(.untranslated) .untranslated > span {
   margin-bottom: 0;
@@ -2682,6 +2725,9 @@ small {
 .paper-block:has(.untranslated) .untranslated:has(p) + .block-actions {
   position: static;
   margin-top: 7px;
+}
+.paper-block:has(.paragraph-locations) .block-actions {
+  position: static;
 }
 .heading-block:has(.untranslated) {
   margin-top: 0;

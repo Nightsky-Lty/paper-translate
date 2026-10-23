@@ -22,6 +22,8 @@ import {
   AlertCircle,
   Maximize2,
   Minimize2,
+  Combine,
+  Split,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -37,6 +39,7 @@ import {
   assetUrl,
   MODES,
   type Block,
+  type Location,
   type Mode,
   type Paper,
 } from "./types";
@@ -116,12 +119,21 @@ export default function Reader({
   const { storageLabel } = useRuntime();
   const [showPdf, setShowPdf] = useState(true);
   const [selected, setSelected] = useState("");
+  const [focusLocation, setFocusLocation] = useState<Location | null>(null);
   const [page, setPage] = useState(0);
   const [edit, setEdit] = useState<Block | null>(null);
+  const [structure, setStructure] = useState<{
+    kind: "merge" | "split";
+    block: Block;
+    next?: Block;
+  } | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
-  useDialog(!!edit, () => {
-    if (!saving) setEdit(null);
+  useDialog(!!edit || !!structure, () => {
+    if (!saving) {
+      setEdit(null);
+      setStructure(null);
+    }
   });
   const [exporting, setExporting] = useState(false);
   const [menu, setMenu] = useState("");
@@ -149,6 +161,13 @@ export default function Reader({
     }
     return groups;
   }, [paper.blocks]);
+  const nextBlocks = useMemo(
+    () =>
+      new Map(
+        paper.blocks.slice(0, -1).map((b, i) => [b.id, paper.blocks[i + 1]]),
+      ),
+    [paper.blocks],
+  );
 
   const changeFocus = (next: boolean) => {
     setMenu("");
@@ -209,10 +228,18 @@ export default function Reader({
     return () => document.removeEventListener("mousedown", listener);
   }, [menu]);
 
-  const select = (block: Block, fromPdf = false) => {
+  const select = (
+    block: Block,
+    fromPdf = false,
+    clickedLocation?: Location,
+  ) => {
     source.current = fromPdf ? "pdf" : "reader";
     setSelected(block.id);
-    const loc = block.source_locations[0];
+    const loc =
+      clickedLocation ||
+      block.source_locations.find((v) => v.page_index === page) ||
+      block.source_locations[0];
+    setFocusLocation(loc || null);
     if (loc && !fromPdf) setPage(loc.page_index);
     if (fromPdf || !showPdf) {
       content.current
@@ -267,6 +294,37 @@ export default function Reader({
       setSaving(false);
     }
   };
+  const saveStructure = async () => {
+    if (!structure) return;
+    const { kind, block, next } = structure;
+    setSaving(true);
+    try {
+      const updated = await api<Paper>(
+        `/documents/${paper.id}/blocks/${block.id}/${kind === "merge" ? "merge-next" : "split"}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            revision: block.revision,
+            ...(next
+              ? { next_block_id: next.id, next_revision: next.revision }
+              : {}),
+          }),
+        },
+      );
+      onUpdate(updated);
+      setSelected(block.id);
+      setStructure(null);
+      notify(
+        kind === "merge"
+          ? "已合并为完整段落，可重新翻译该段"
+          : "已恢复原始分段和合并前的译文",
+      );
+    } catch (e) {
+      notify((e as Error).message, true);
+    } finally {
+      setSaving(false);
+    }
+  };
   const download = async (format: string) => {
     setExporting(true);
     setMenu("");
@@ -294,6 +352,16 @@ export default function Reader({
   };
 
   const blockView = (block: Block, language: "en" | "zh", keySuffix = "") => {
+    const next = nextBlocks.get(block.id);
+    const canMerge =
+      block.type === "paragraph" &&
+      block.translatable &&
+      !block.asset &&
+      next?.type === "paragraph" &&
+      next.translatable &&
+      !next.asset &&
+      block.section_id === next.section_id;
+    const merged = (block.source_parts?.length || 0) > 1;
     const text =
       language === "en" || !block.translatable
         ? block.original
@@ -335,6 +403,29 @@ export default function Reader({
             {mode === "zh" && <Content text={block.original} />}
           </div>
         )}
+        {merged && language === "zh" && (
+          <div
+            className="paragraph-locations"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span>续段已合并</span>
+            {block.source_locations.map((loc, i) => (
+              <button
+                key={i}
+                title={`定位原文片段 ${i + 1}（第 ${loc.page_index + 1} 页）`}
+                onClick={() => {
+                  source.current = "reader";
+                  setSelected(block.id);
+                  setFocusLocation(loc);
+                  setShowPdf(true);
+                  setPage(loc.page_index);
+                }}
+              >
+                原文 {i + 1} · 第 {loc.page_index + 1} 页
+              </button>
+            ))}
+          </div>
+        )}
         {block.translatable && language === "zh" && (
           <div className="block-actions" onClick={(e) => e.stopPropagation()}>
             {block.status === "edited" && (
@@ -371,6 +462,28 @@ export default function Reader({
             >
               <RefreshCw size={13} />
             </button>
+            {canMerge && (
+              <button
+                title="与下一段合并"
+                aria-label="与下一段合并"
+                className="icon-button"
+                disabled={running}
+                onClick={() => setStructure({ kind: "merge", block, next })}
+              >
+                <Combine size={13} />
+              </button>
+            )}
+            {merged && (
+              <button
+                title="恢复原始分段"
+                aria-label="恢复原始分段"
+                className="icon-button"
+                disabled={running}
+                onClick={() => setStructure({ kind: "split", block })}
+              >
+                <Split size={13} />
+              </button>
+            )}
           </div>
         )}
       </article>
@@ -619,7 +732,8 @@ export default function Reader({
           <PdfViewer
             paper={paper}
             selected={selected}
-            onSelect={(b) => select(b, true)}
+            focusLocation={focusLocation}
+            onSelect={(b, loc) => select(b, true, loc)}
             page={page}
             setPage={setPage}
           />
@@ -700,6 +814,74 @@ export default function Reader({
           </div>
         </section>
       </div>
+      {structure && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !saving) setStructure(null);
+          }}
+        >
+          <div
+            className="modal paragraph-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              structure.kind === "merge" ? "合并正文段落" : "恢复原始分段"
+            }
+          >
+            <div className="modal-heading">
+              <div>
+                <span className="eyebrow">PARAGRAPH ALIGNMENT</span>
+                <h2>
+                  {structure.kind === "merge"
+                    ? "把续段连起来。"
+                    : "恢复原始分段。"}
+                </h2>
+              </div>
+              <button
+                className="icon-button"
+                aria-label="关闭段落调整"
+                disabled={saving}
+                onClick={() => setStructure(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="paragraph-preview">
+              <p className="info-note">
+                {structure.kind === "merge"
+                  ? "合并后会将两段作为完整段落重新翻译。PDF 的位置关联和合并前的译文会保留；确认后不会自动调用翻译服务。"
+                  : "拆分后恢复合并前的段落和各自的译文。当前整段译文不会被强行分配到各片段，会保存在结构化 JSON 的段落历史中。"}
+              </p>
+              {(structure.kind === "merge"
+                ? [structure.block, structure.next!]
+                : structure.block.source_parts || []
+              ).map((b, i) => (
+                <div className="paragraph-fragment" key={b.id}>
+                  <small>
+                    片段 {i + 1}
+                    {b.source_locations[0]
+                      ? ` · 第 ${b.source_locations[0].page_index + 1} 页`
+                      : ""}
+                  </small>
+                  <Content text={b.original} />
+                </div>
+              ))}
+            </div>
+            <div className="modal-footer">
+              <span>原文、公式与引用保持关联</span>
+              <button
+                className="button primary"
+                disabled={saving || running}
+                onClick={saveStructure}
+              >
+                {saving && <LoaderCircle size={15} className="spin" />}
+                {structure.kind === "merge" ? "确认合并" : "确认拆分"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {edit && (
         <div
           className="modal-backdrop"
